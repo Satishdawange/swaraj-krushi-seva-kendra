@@ -1,0 +1,30 @@
+.product-card-image {
+  width: 100%;
+  height: 240px;
+  overflow: hidden;
+}
+
+.product-card-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.product-badge,
+.product-category {
+  display: inline-block;
+  margin-right: 8px;
+  margin-bottom: 10px;
+  vertical-align: middle;
+}
+
+.product-badge {
+  padding: 5px 10px;
+  border-radius: 20px;
+}
+
+.product-category {
+  padding: 5px 10px;
+  border-radius: 20px;
+}

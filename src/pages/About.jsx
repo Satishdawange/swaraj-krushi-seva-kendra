@@ -1,3 +1,109 @@
+
 import React from 'react';
-import { CheckCircle2, HeartHandshake, Sprout, Target } from '../components/Icons';
-export default function About(){return <section className="simple-page"><div className="page-hero"><span className="pill">🌱 आमची ओळख</span><h1>स्वराज कृषी सेवा केंद्र</h1><p>शेतकऱ्यांसाठी विश्वास, माहिती आणि दर्जेदार कृषी उत्पादनांची एकत्रित सेवा.</p></div><div className="about-layout"><img src="https://images.unsplash.com/photo-1523742810355-9f7b2e6c5f7f?auto=format&fit=crop&w=1200&q=85" alt="शेती"/><div><span className="section-kicker">आमचा दृष्टिकोन</span><h2>शेतकऱ्याच्या निर्णयात<br/><em>थोडी अधिक स्पष्टता.</em></h2><p>स्वराज कृषी सेवा केंद्र हे स्थानिक शेतकऱ्यांना आवश्यक कृषी उत्पादने आणि उपयोगी माहिती सहज मिळावी या उद्देशाने तयार केलेले दुकान आहे.</p><div className="values"><div><HeartHandshake/><b>विश्वास</b><span>प्रामाणिक आणि स्पष्ट सेवा</span></div><div><Sprout/><b>शेती</b><span>पिकांच्या गरजेला प्राधान्य</span></div><div><Target/><b>मार्गदर्शन</b><span>योग्य वापराची माहिती</span></div></div></div></div></section>}
+import GroundNut from '../images/groundnut.jpg';
+import {
+  CheckCircle2,
+  HeartHandshake,
+  Sprout,
+  Target
+} from '../components/Icons';
+
+export default function About() {
+  return (
+    <section className="simple-page">
+
+      <div className="page-hero">
+
+        <span className="pill">
+          🌱 आमची ओळख
+        </span>
+
+        <h1>
+          स्वराज कृषी सेवा केंद्र
+        </h1>
+
+        <p>
+          शेतकऱ्यांसाठी विश्वास, माहिती आणि दर्जेदार कृषी
+          उत्पादनांची एकत्रित सेवा.
+        </p>
+
+      </div>
+
+
+      <div className="about-layout">
+
+        <img
+          src={GroundNut}
+          alt="शेती"
+        />
+
+
+        <div>
+
+          <span className="section-kicker">
+            आमचा दृष्टिकोन
+          </span>
+
+          <h2>
+            शेतकऱ्याच्या निर्णयात
+            <br />
+            <em>थोडी अधिक स्पष्टता.</em>
+          </h2>
+
+          <p>
+            स्वराज कृषी सेवा केंद्र हे स्थानिक शेतकऱ्यांना
+            आवश्यक कृषी उत्पादने आणि उपयोगी माहिती सहज
+            मिळावी या उद्देशाने तयार केलेले दुकान आहे.
+          </p>
+
+
+          <div className="values">
+
+            <div>
+              <HeartHandshake />
+
+              <b>
+                विश्वास
+              </b>
+
+              <span>
+                प्रामाणिक आणि स्पष्ट सेवा
+              </span>
+            </div>
+
+
+            <div>
+              <Sprout />
+
+              <b>
+                शेती
+              </b>
+
+              <span>
+                पिकांच्या गरजेला प्राधान्य
+              </span>
+            </div>
+
+
+            <div>
+              <Target />
+
+              <b>
+                मार्गदर्शन
+              </b>
+
+              <span>
+                योग्य वापराची माहिती
+              </span>
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+  );
+}
+
