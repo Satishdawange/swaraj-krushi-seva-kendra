@@ -14,7 +14,7 @@ export const products = [
     name: "क्लोरोपायरीफॉस 20% EC",
     nameEn: "Chlorpyrifos 20% EC",
 
-    company: "उदाहरण अ‍ॅग्रो",
+    company: "अ‍ॅग्रो",
     companyEn: "Udaharan Agro",
 
     price: 485,
