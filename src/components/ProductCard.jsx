@@ -1,0 +1,4 @@
+import React from 'react';
+import { Link } from 'react-router-dom';
+import { ArrowUpRight, MessageCircle } from '../components/Icons';
+export default function ProductCard({product}){ return <article className="product-card"><div className="product-img"><img src={product.image} alt={product.name}/>{product.badge&&<span className="badge">{product.badge}</span>}</div><div className="product-body"><span className="eyebrow">{product.category}</span><h3>{product.name}</h3><p>{product.short}</p><div className="product-bottom"><strong>₹{product.price.toLocaleString('en-IN')}</strong><Link to={`/products/${product.id}`} className="icon-btn" aria-label="उत्पादन तपशील"><ArrowUpRight size={19}/></Link></div><Link className="wa-mini" to={`/products/${product.id}`}><MessageCircle size={16}/> तपशील व WhatsApp</Link></div></article> }
