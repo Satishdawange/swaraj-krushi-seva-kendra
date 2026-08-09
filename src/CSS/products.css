@@ -455,3 +455,31 @@
   }
 
 }
+@media (max-width: 480px) {
+
+  .products-page {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .category-filter {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 10px;
+  }
+
+  .category-btn {
+    flex-shrink: 0;
+    font-size: 13px;
+    padding: 9px 13px;
+  }
+
+  .product-search {
+    min-height: 52px;
+  }
+
+  .product-search input {
+    font-size: 14px;
+  }
+
+}
