@@ -19,6 +19,7 @@ import { products } from '../data/products';
 import ShopProp from '../config/shopProps';
 
 
+
 export default function ProductDetail() {
 
   const { id } = useParams();

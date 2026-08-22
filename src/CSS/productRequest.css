@@ -1,0 +1,267 @@
+/* =========================================================
+   PRODUCT REQUEST PAGE
+   ========================================================= */
+
+.product-request-page {
+  padding-bottom: 80px;
+}
+
+/* =========================================================
+   REQUEST FORM
+   ========================================================= */
+
+.product-request-form {
+  width: min(760px, 100%);
+  margin: 40px auto 0;
+  padding: 35px;
+  background: #ffffff;
+  border: 1px solid #e7eee8;
+  border-radius: 24px;
+  box-shadow: 0 15px 45px rgba(30, 80, 45, 0.08);
+}
+
+/* =========================================================
+   FORM GROUP
+   ========================================================= */
+
+.form-group {
+  margin-bottom: 24px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 9px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #24352a;
+}
+
+.form-group label span {
+  margin-left: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #7b887e;
+}
+
+/* =========================================================
+   INPUTS
+   ========================================================= */
+
+.form-group input,
+.form-group textarea {
+  width: 100%;
+  box-sizing: border-box;
+
+  padding: 14px 16px;
+
+  border: 1px solid #dce5de;
+  border-radius: 12px;
+
+  background: #fbfdfb;
+
+  font-family: inherit;
+  font-size: 15px;
+
+  color: #24352a;
+
+  outline: none;
+
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+}
+
+.form-group input {
+  height: 50px;
+}
+
+.form-group textarea {
+  min-height: 110px;
+  resize: vertical;
+  line-height: 1.6;
+}
+
+.form-group input::placeholder,
+.form-group textarea::placeholder {
+  color: #9aa69d;
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+  border-color: #4f8a5b;
+  background: #ffffff;
+
+  box-shadow: 0 0 0 4px rgba(79, 138, 91, 0.1);
+}
+
+/* =========================================================
+   SIMILAR PRODUCT SECTION
+   ========================================================= */
+
+.similar-products {
+  margin-top: 35px;
+  padding-top: 30px;
+
+  border-top: 1px solid #e8eee9;
+}
+
+.similar-products h3 {
+  margin: 0 0 8px;
+
+  font-size: 21px;
+  color: #24352a;
+}
+
+.similar-products > p {
+  margin: 0 0 25px;
+
+  color: #6d786f;
+  line-height: 1.6;
+}
+
+/* =========================================================
+   SIMILAR PRODUCT GRID
+   ========================================================= */
+
+.similar-products .product-grid {
+  margin-top: 20px;
+}
+
+/* =========================================================
+   NO SIMILAR PRODUCTS
+   ========================================================= */
+
+.no-similar-products {
+  margin-top: 20px;
+  padding: 15px 18px;
+
+  border-radius: 12px;
+
+  background: #f6faf6;
+
+  color: #657168;
+
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* =========================================================
+   ERROR
+   ========================================================= */
+
+.request-error {
+  margin-top: 20px;
+  padding: 14px 16px;
+
+  border-radius: 12px;
+
+  background: #fff4f3;
+  border: 1px solid #f1d5d2;
+
+  color: #a13b32;
+
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* =========================================================
+   SUBMIT BUTTON
+   ========================================================= */
+
+.request-submit {
+  width: 100%;
+  justify-content: center;
+
+  margin-top: 28px;
+}
+
+/* =========================================================
+   DISABLED BUTTON
+   ========================================================= */
+
+.product-request-form button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* =========================================================
+   SUCCESS MESSAGE
+   ========================================================= */
+
+.request-success {
+  width: min(650px, 100%);
+  margin: 70px auto;
+
+  padding: 55px 35px;
+
+  text-align: center;
+
+  background: #ffffff;
+
+  border: 1px solid #e3ebe5;
+
+  border-radius: 24px;
+
+  box-shadow: 0 15px 45px rgba(30, 80, 45, 0.08);
+}
+
+.request-success h1 {
+  margin: 20px 0 12px;
+
+  font-size: 30px;
+
+  color: #24352a;
+}
+
+.request-success p {
+  max-width: 520px;
+  margin: 10px auto;
+
+  color: #68736b;
+
+  line-height: 1.7;
+}
+
+/* =========================================================
+   MOBILE
+   ========================================================= */
+
+@media (max-width: 768px) {
+  .product-request-page {
+    padding-bottom: 50px;
+  }
+
+  .product-request-form {
+    margin-top: 25px;
+    padding: 22px;
+
+    border-radius: 18px;
+  }
+
+  .form-group {
+    margin-bottom: 20px;
+  }
+
+  .form-group input {
+    height: 48px;
+  }
+
+  .form-group input,
+  .form-group textarea {
+    font-size: 14px;
+  }
+
+  .similar-products h3 {
+    font-size: 19px;
+  }
+
+  .request-success {
+    margin: 40px auto;
+    padding: 40px 22px;
+  }
+
+  .request-success h1 {
+    font-size: 25px;
+  }
+}

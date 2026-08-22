@@ -22,4 +22,5 @@ export const BadgeCheck=make('✓');
 export const BookOpen=make('📖'); 
 export const ClipboardCheck=make('☑'); 
 export const Navigation=make('➤');
+export const send=make('➤');
 export const User=make('👤');
