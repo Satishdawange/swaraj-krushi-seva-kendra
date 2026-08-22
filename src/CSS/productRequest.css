@@ -265,3 +265,15 @@
     font-size: 25px;
   }
 }
+.request-note {
+  margin-top: 18px;
+  text-align: center;
+  color: #737d75;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.request-note strong {
+  margin: 0 4px;
+  color: #3f6046;
+}

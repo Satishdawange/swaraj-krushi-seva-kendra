@@ -5,25 +5,10 @@ import React, {
 
 import {
   MessageCircle,
-  Search,
   CheckCircle2
 } from '../components/Icons';
 
-import {
-  getProducts
-} from '../service/productService';
-
 import ShopProp from '../config/shopProps';
-
-import {
-  createProductRequest
-} from '../service/productRequestService';
-
-import {
-  findSimilarProducts
-} from '../service/productSearchService';
-
-import ProductCard from '../components/ProductCard';
 
 import '../CSS/productRequest.css';
 
@@ -54,34 +39,8 @@ export default function ProductRequest() {
 
 
   // =====================================================
-  // PRODUCTS
+  // SUBMISSION STATE
   // =====================================================
-
-  const [
-    products,
-    setProducts
-  ] = useState([]);
-
-
-  // =====================================================
-  // SIMILAR PRODUCTS
-  // =====================================================
-
-  const [
-    similarProducts,
-    setSimilarProducts
-  ] = useState([]);
-
-
-  // =====================================================
-  // UI STATES
-  // =====================================================
-
-  const [
-    checking,
-    setChecking
-  ] = useState(false);
-
 
   const [
     submitting,
@@ -102,185 +61,113 @@ export default function ProductRequest() {
 
 
   // =====================================================
-  // LOAD PRODUCTS
+  // SUBMIT REQUEST
   // =====================================================
 
-  useEffect(() => {
+  const handleSubmit = (event) => {
 
-    async function loadProducts() {
+    event.preventDefault();
 
-      try {
 
-        const data =
-          await getProducts();
+    // ---------------------------------------------------
+    // Clear previous error
+    // ---------------------------------------------------
 
-        setProducts(data);
+    setError('');
 
-      } catch (error) {
 
-        console.error(error);
+    // ---------------------------------------------------
+    // Validate required field
+    // ---------------------------------------------------
 
-      }
+    if (!usageDescription.trim()) {
+
+      setError(
+        'कृपया उत्पादन कशासाठी हवे आहे ते लिहा.'
+      );
+
+      return;
 
     }
 
 
-    loadProducts();
+    try {
 
-  }, []);
-
-
-  // =====================================================
-  // CHECK SIMILAR PRODUCTS
-  // =====================================================
-
-  const checkSimilarProducts =
-    () => {
-
-      setChecking(true);
-
-      setError('');
+      setSubmitting(true);
 
 
-      const results =
-        findSimilarProducts(
+      // =================================================
+      // CREATE WHATSAPP MESSAGE
+      // =================================================
 
-          products,
+      const message = `
 
-          productName,
-
-          shortDescription,
-
-          usageDescription
-
-        );
-
-
-      setSimilarProducts(results);
-
-
-      setChecking(false);
-
-    };
-
-
-  // =====================================================
-  // SUBMIT REQUEST
-  // =====================================================
-
-  const handleSubmit =
-    async (event) => {
-
-      event.preventDefault();
-
-
-      // -----------------------------------------------
-      // Validation
-      // -----------------------------------------------
-
-      if (
-        !usageDescription.trim()
-      ) {
-
-        setError(
-          'कृपया उत्पादन कशासाठी हवे आहे ते लिहा.'
-        );
-
-        return;
-
-      }
-
-
-      try {
-
-        setSubmitting(true);
-
-        setError('');
-
-
-        // ---------------------------------------------
-        // Save request in Supabase
-        // ---------------------------------------------
-
-        const request =
-          await createProductRequest({
-
-            productName,
-
-            shortDescription,
-
-            usageDescription
-
-          });
-
-
-        // ---------------------------------------------
-        // Create WhatsApp message
-        // ---------------------------------------------
-
-        const message = `
-
-नमस्कार स्वराज कृषी सेवा केंद्र,
+नमस्कार ${ShopProp.fullName},
 
 मला खालील उत्पादन उपलब्ध करून घ्यायचे आहे.
 
 उत्पादनाचे नाव:
-${productName || 'माहित नाही'}
+${productName.trim() || 'माहित नाही'}
 
 थोडक्यात माहिती:
-${shortDescription || 'दिलेली नाही'}
+${shortDescription.trim() || 'दिलेली नाही'}
 
 कशासाठी हवे आहे:
-${usageDescription}
+${usageDescription.trim()}
 
-Request ID:
-${request.id}
-
-कृपया हे उत्पादन उपलब्ध आहे का किंवा त्याऐवजी योग्य पर्याय आहे का ते कळवा.
+कृपया हे उत्पादन उपलब्ध आहे का किंवा
+यासाठी योग्य पर्याय उपलब्ध आहे का ते कळवा.
 
 धन्यवाद.
 
-        `.trim();
+      `.trim();
 
 
-        const whatsappUrl =
-  `https://wa.me/${ShopProp.whatsapp}?text=${
-    encodeURIComponent(message)
-  }`;
+      // =================================================
+      // CREATE WHATSAPP URL
+      // =================================================
+
+      const whatsappUrl =
+        `https://wa.me/${ShopProp.whatsapp}?text=${
+          encodeURIComponent(message)
+        }`;
 
 
-        // ---------------------------------------------
-        // Show success
-        // ---------------------------------------------
+      // =================================================
+      // OPEN WHATSAPP
+      // =================================================
 
-        setSubmitted(true);
-
-
-        // ---------------------------------------------
-        // Open WhatsApp
-        // ---------------------------------------------
-
-        window.open(
-          whatsappUrl,
-          '_blank'
-        );
+      window.open(
+        whatsappUrl,
+        '_blank'
+      );
 
 
-      } catch (err) {
+      // =================================================
+      // SUCCESS
+      // =================================================
 
-        console.error(err);
+      setSubmitted(true);
 
-        setError(
-          'तुमची विनंती पाठवता आली नाही. कृपया पुन्हा प्रयत्न करा.'
-        );
 
-      } finally {
+    } catch (err) {
 
-        setSubmitting(false);
+      console.error(
+        'WhatsApp error:',
+        err
+      );
 
-      }
+      setError(
+        'WhatsApp उघडताना समस्या आली. कृपया पुन्हा प्रयत्न करा.'
+      );
 
-    };
+    } finally {
+
+      setSubmitting(false);
+
+    }
+
+  };
 
 
   // =====================================================
@@ -298,20 +185,20 @@ ${request.id}
           <CheckCircle2 size={55} />
 
           <h1>
-            तुमची विनंती पाठवली आहे!
+            तुमची विनंती तयार आहे!
           </h1>
 
           <p>
 
-            तुमची मागणी आमच्याकडे नोंदवली आहे
-            आणि WhatsApp वरही पाठवली आहे.
+            तुमची उत्पादन मागणी WhatsApp वर
+            पाठवण्यासाठी तयार करण्यात आली आहे.
 
           </p>
 
           <p>
 
-            आम्ही उपलब्धता तपासून
-            तुम्हाला योग्य माहिती देऊ.
+            WhatsApp मध्ये संदेश पाठवण्याचे
+            बटण दाबा.
 
           </p>
 
@@ -334,7 +221,7 @@ ${request.id}
 
 
       {/* =================================================
-          HERO
+          PAGE HERO
       ================================================= */}
 
       <div className="page-hero">
@@ -345,23 +232,22 @@ ${request.id}
 
         <h1>
           तुम्हाला हवे असलेले उत्पादन
-          शोधण्यात आम्हाला सांगा
+          आम्हाला सांगा
         </h1>
 
         <p>
 
-          दुकानात उपलब्ध नसलेले उत्पादन
-          आम्हाला सांगा. आम्ही उपलब्धता तपासण्याचा
-          प्रयत्न करू.
+          दुकानात उपलब्ध नसलेले किंवा
+          तुम्हाला आवश्यक असलेले उत्पादन
+          आम्हाला कळवा.
 
         </p>
 
       </div>
 
 
-
       {/* =================================================
-          FORM
+          REQUEST FORM
       ================================================= */}
 
       <form
@@ -370,14 +256,22 @@ ${request.id}
       >
 
 
-        {/* Product Name */}
+        {/* =================================================
+            PRODUCT NAME
+        ================================================= */}
 
         <div className="form-group">
 
           <label>
+
             उत्पादनाचे नाव
-            <span> माहिती असेल तर </span>
+
+            <span>
+              ऐच्छिक
+            </span>
+
           </label>
+
 
           <input
             type="text"
@@ -391,14 +285,16 @@ ${request.id}
         </div>
 
 
-
-        {/* Short Description */}
+        {/* =================================================
+            SHORT DESCRIPTION
+        ================================================= */}
 
         <div className="form-group">
 
           <label>
             उत्पादनाबद्दल थोडक्यात माहिती
           </label>
+
 
           <textarea
             value={shortDescription}
@@ -414,15 +310,22 @@ ${request.id}
         </div>
 
 
-
-        {/* Usage */}
+        {/* =================================================
+            USAGE
+        ================================================= */}
 
         <div className="form-group">
 
           <label>
+
             तुम्हाला हे उत्पादन कशासाठी हवे आहे?
-            <span>*</span>
+
+            <span>
+              *
+            </span>
+
           </label>
+
 
           <textarea
             value={usageDescription}
@@ -431,97 +334,12 @@ ${request.id}
                 e.target.value
               )
             }
-            placeholder="उदा. टोमॅटो पिकावर बुरशीजन्य रोगासाठी..."
-            rows="4"
+            placeholder="उदा. टोमॅटो पिकासाठी बुरशीजन्य रोगाच्या व्यवस्थापनासाठी..."
+            rows="5"
             required
           />
 
         </div>
-
-
-
-        {/* =================================================
-            SIMILAR PRODUCT SEARCH
-        ================================================= */}
-
-        <button
-          type="button"
-          className="secondary-btn"
-          onClick={checkSimilarProducts}
-          disabled={checking}
-        >
-
-          <Search size={18} />
-
-          {checking
-            ? 'उत्पादने तपासत आहोत...'
-            : 'समान उत्पादने तपासा'
-          }
-
-        </button>
-
-
-
-        {/* =================================================
-            SIMILAR PRODUCTS
-        ================================================= */}
-
-        {similarProducts.length > 0 && (
-
-          <div className="similar-products">
-
-            <h3>
-
-              तुमच्या गरजेशी संबंधित उत्पादने
-
-            </h3>
-
-            <p>
-
-              कदाचित यापैकी एखादे उत्पादन
-              तुमच्या गरजेसाठी योग्य असू शकते.
-
-            </p>
-
-
-            <div className="product-grid">
-
-              {similarProducts.map(
-                product => (
-
-                  <ProductCard
-                    key={product.id}
-                    product={product}
-                  />
-
-                )
-              )}
-
-            </div>
-
-          </div>
-
-        )}
-
-
-        {/* =================================================
-            NO SIMILAR PRODUCTS
-        ================================================= */}
-
-        {similarProducts.length === 0 &&
-          (productName ||
-            shortDescription ||
-            usageDescription) && (
-
-            <p className="no-similar-products">
-
-              समान उत्पादन सापडले नाही.
-              तुमची विनंती आम्हाला पाठवू शकता.
-
-            </p>
-
-          )}
-
 
 
         {/* =================================================
@@ -539,9 +357,8 @@ ${request.id}
         )}
 
 
-
         {/* =================================================
-            SUBMIT
+            WHATSAPP BUTTON
         ================================================= */}
 
         <button
@@ -553,11 +370,26 @@ ${request.id}
           <MessageCircle size={19} />
 
           {submitting
-            ? 'विनंती पाठवत आहे...'
-            : 'विनंती WhatsApp वर पाठवा'
+            ? 'WhatsApp उघडत आहे...'
+            : 'WhatsApp वर विनंती पाठवा'
           }
 
         </button>
+
+
+        {/* =================================================
+            INFORMATION
+        ================================================= */}
+
+        <p className="request-note">
+
+          तुमची माहिती थेट
+          <strong>
+            {ShopProp.fullName}
+          </strong>
+          च्या WhatsApp वर पाठवली जाईल.
+
+        </p>
 
 
       </form>
