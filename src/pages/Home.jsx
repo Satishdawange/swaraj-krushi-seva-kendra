@@ -21,6 +21,8 @@ import ProductCard from '../components/ProductCard';
 
 import ShopProp from '../config/shopProps';
 
+import AiAgriAdvisor from '../components/AiAgriAdvisor';
+
 
 export default function Home() {
 
@@ -42,7 +44,7 @@ export default function Home() {
         <div className="hero-content">
 
           <span className="pill">
-            🌾 शेतकऱ्यांचा विश्वास • स्थानिक सेवा
+            🌾 AI कृषी मित्र • थेट मोफत शेती सल्लागार
           </span>
 
 
@@ -56,9 +58,7 @@ export default function Home() {
 
 
           <p>
-            स्वराज कृषी सेवा केंद्रमध्ये कीटकनाशके,
-            बुरशीनाशके, तणनाशके, जैविक उत्पादने आणि खते —
-            आपल्या पिकांच्या गरजेनुसार.
+            पिकांवरील रोग, किडीचा प्रादुर्भाव किंवा खतांबद्दल थेट प्रश्न विचारा — आमचा AI कृषी मित्र तुम्हाला पिकांचे नाव, डोस व स्वराज कृषी सेवा केंद्रातील योग्य औषधांची माहिती देईल.
           </p>
 
 
@@ -106,51 +106,10 @@ export default function Home() {
         </div>
 
 
-        {/* Hero Image */}
-        <div className="hero-visual">
+        {/* Interactive AI Krushi Mitra Window */}
+        <div className="hero-visual" style={{ minHeight: 'auto' }}>
 
-          <div className="hero-card main">
-
-            <img
-              src="https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=1100&q=85"
-              alt="हिरवेगार शेत"
-            />
-
-
-            <div className="image-caption">
-
-              <span>
-                🌱
-              </span>
-
-              <div>
-
-                <b>
-                  आपल्या शेतीसोबत
-                </b>
-
-                <small>
-                  प्रत्येक हंगामात
-                </small>
-
-              </div>
-
-            </div>
-
-          </div>
-
-
-          <div className="floating-stat">
-
-            <b>
-              100%
-            </b>
-
-            <span>
-              शेतकरी-केंद्रित सेवा
-            </span>
-
-          </div>
+          <AiAgriAdvisor />
 
         </div>
 
