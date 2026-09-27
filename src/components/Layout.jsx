@@ -24,6 +24,8 @@ import {
   getShopSettings
 } from '../service/shopService';
 
+import { useAuth } from '../context/AuthContext';
+
 
 export default function Layout({ children }) {
 
@@ -41,6 +43,7 @@ export default function Layout({ children }) {
   // =====================================================
 
   const [open, setOpen] = useState(false);
+  const { isAdmin, signOut } = useAuth();
 
 
 
@@ -127,21 +130,23 @@ export default function Layout({ children }) {
   // NAVIGATION LINKS
   // =====================================================
 
-  const links = [
-
+  const baseLinks = [
     ['/', 'मुख्यपृष्ठ'],
-
     ['/products', 'उत्पादने'],
-
-    ['/product-request','उत्पादन मागणी'],
-
+    ['/product-request', 'उत्पादन मागणी'],
     ['/about', 'आमच्याबद्दल'],
-
     ['/services', 'सेवा'],
-
     ['/contact', 'संपर्क']
-
   ];
+
+  const adminLinks = isAdmin
+    ? [
+        ['/admin/billing', '🧾 बिल तयार करा'],
+        ['/admin/bills', '📋 सर्व बिले']
+      ]
+    : [];
+
+  const links = [...baseLinks, ...adminLinks];
 
 
 
@@ -164,9 +169,45 @@ export default function Layout({ children }) {
           🌱 शेतकरी हित प्रथम • दर्जेदार कृषी उत्पादने • विश्वासाची सेवा
         </span>
 
-        <span className="top-hide">
-          📍 आपल्या सेवेत सदैव
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <span className="top-hide">
+            📍 आपल्या सेवेत सदैव
+          </span>
+
+          {isAdmin ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', color: '#b9dc68', fontSize: '11px' }}>
+              👤 ॲडमिन
+              <button
+                onClick={signOut}
+                style={{
+                  background: 'rgba(255,255,255,0.2)',
+                  border: 'none',
+                  color: '#ffffff',
+                  borderRadius: '4px',
+                  padding: '2px 8px',
+                  fontSize: '10px',
+                  cursor: 'pointer'
+                }}
+              >
+                लॉगआउट
+              </button>
+            </span>
+          ) : (
+            <Link
+              to="/admin/login"
+              style={{
+                color: '#b9dc68',
+                fontSize: '11px',
+                fontWeight: '600',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              🔐 Admin
+            </Link>
+          )}
+        </div>
 
       </div>
 
@@ -288,6 +329,31 @@ export default function Layout({ children }) {
 
           </Link>
 
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                signOut();
+              }}
+              style={{
+                background: '#fee2e2',
+                color: '#991b1b',
+                border: 'none',
+                padding: '10px 14px',
+                borderRadius: '12px',
+                fontSize: '13px',
+                fontWeight: '700',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                margin: '6px 0 0'
+              }}
+            >
+              🚪 बाहेर पडा (Logout)
+            </button>
+          )}
 
         </nav>
 
