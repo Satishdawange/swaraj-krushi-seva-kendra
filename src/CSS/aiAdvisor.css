@@ -477,3 +477,28 @@
   }
 }
 
+@media (max-width: 768px) {
+  .ai-advisor-card {
+    height: min(72vh, 600px);
+    min-height: 420px;
+  }
+
+  .ai-advisor-header {
+    gap: 8px;
+  }
+
+  .ai-title-text h3 {
+    flex-wrap: wrap;
+  }
+
+  .ai-suggestions-row {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .ai-chip {
+    flex: 0 0 auto;
+  }
+}
+

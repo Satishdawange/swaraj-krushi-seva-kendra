@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="mr">
+<head>
+  <meta charset="UTF-8">
+  <title>स्वराज कृषी सेवा केंद्र - वापरकर्ता व व्यवस्थापक प्रशिक्षण पुस्तिका</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 18mm 14mm 18mm 14mm;
+      @bottom-right {
+        content: counter(page);
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    body {
+      font-family: 'Noto Sans Devanagari', 'Outfit', sans-serif;
+      color: #1a241e;
+      line-height: 1.65;
+      font-size: 13.5px;
+      margin: 0;
+      padding: 0;
+      background: #ffffff;
+    }
+
+    .doc-cover-banner {
+      background: linear-gradient(135deg, #123e26, #1b6338);
+      color: #ffffff;
+      padding: 26px 30px;
+      border-radius: 14px;
+      margin-bottom: 25px;
+      border-bottom: 4px solid #b9dc68;
+    }
+
+    .doc-cover-banner h1 {
+      margin: 0 0 6px;
+      font-size: 26px;
+      color: #ffffff;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+
+    .doc-cover-banner p {
+      margin: 4px 0 0;
+      color: #d4f0d9;
+      font-size: 13px;
+    }
+
+    h1 {
+      color: #135c2f;
+      font-size: 22px;
+      font-weight: 800;
+      margin-top: 32px;
+      margin-bottom: 14px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #c8decb;
+      page-break-after: avoid;
+      break-after: avoid;
+    }
+
+    h2 {
+      color: #176b3a;
+      font-size: 18px;
+      font-weight: 700;
+      margin-top: 26px;
+      margin-bottom: 10px;
+      padding-bottom: 6px;
+      border-bottom: 1.5px solid #e1ebe2;
+      page-break-after: avoid;
+      break-after: avoid;
+    }
+
+    h3 {
+      color: #214d2e;
+      font-size: 15px;
+      font-weight: 700;
+      margin-top: 18px;
+      margin-bottom: 8px;
+      page-break-after: avoid;
+      break-after: avoid;
+    }
+
+    p {
+      margin: 8px 0;
+      line-height: 1.7;
+    }
+
+    ul, ol {
+      margin: 8px 0;
+      padding-left: 24px;
+    }
+
+    li {
+      margin: 4px 0;
+      line-height: 1.6;
+    }
+
+    blockquote {
+      margin: 14px 0;
+      padding: 12px 18px;
+      background: #f4fbf5;
+      border-left: 4px solid #176b3a;
+      border-radius: 0 10px 10px 0;
+      color: #1b4d2a;
+      font-size: 13px;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 12.5px;
+      page-break-inside: avoid;
+      break-inside: avoid;
+      background: #ffffff;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid #c9decb;
+    }
+
+    th {
+      background: #eaf5eb;
+      color: #14592f;
+      font-weight: 700;
+      padding: 10px 12px;
+      border-bottom: 2px solid #b7dab9;
+      text-align: left;
+    }
+
+    td {
+      padding: 9px 12px;
+      border-bottom: 1px solid #e5eee6;
+      vertical-align: top;
+    }
+
+    tr:nth-child(even) td {
+      background: #fafdfa;
+    }
+
+    code {
+      font-family: Consolas, 'Courier New', monospace;
+      background: #eef6f0;
+      color: #176b3a;
+      padding: 2px 6px;
+      border-radius: 5px;
+      font-size: 12px;
+      border: 1px solid #d0e4d3;
+    }
+
+    pre {
+      background: #f8faf8;
+      border: 1px solid #d2e4d5;
+      border-radius: 10px;
+      padding: 14px 16px;
+      overflow-x: auto;
+      font-size: 11.5px;
+      line-height: 1.5;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+
+    pre code {
+      background: none;
+      border: none;
+      padding: 0;
+      color: #172a1d;
+    }
+
+    hr {
+      border: 0;
+      height: 1px;
+      background: #d8e5da;
+      margin: 24px 0;
+    }
+
+    strong {
+      color: #11361c;
+    }
+
+    .doc-footer {
+      margin-top: 40px;
+      padding-top: 14px;
+      border-top: 2px solid #dce8de;
+      text-align: center;
+      font-size: 11px;
+      color: #627768;
+    }
+  </style>
+</head>
+<body>
+  <div class="doc-cover-banner">
+    <h1>🌾 स्वराज कृषी सेवा केंद्र</h1>
+    <p><strong>अधिकृत वापरकर्ता व व्यवस्थापक प्रशिक्षण पुस्तिका (Training Manual v2.0)</strong></p>
+    <p>प्रोप्राईटर: निलेश दवंगे | कानमंडाळे, ता. चांदवड, जि. नाशिक | संपर्क: +91 8459568940</p>
+  </div>
+
+  <div class="doc-content">
+    <h1>🌾 स्वराज कृषी सेवा केंद्र (Swaraj Krushi Seva Kendra)</h1>
+<h2>संपूर्ण वापरकर्ता व व्यवस्थापक प्रशिक्षण पुस्तिका (End-User &amp; Admin Comprehensive Training Manual)</h2>
+<blockquote>
+<p><strong>आवृत्ती (Version):</strong> २.०<br><strong>स्थानिक तारीख (Date):</strong> सप्टेंबर २०२६<br><strong>प्रोप्राईटर (Proprietor):</strong> निलेश दवंगे (Nilesh Davange)<br><strong>पत्ता (Address):</strong> मु. पो. कानमंडाळे, ता. चांदवड, जि. नाशिक<br><strong>संपर्क क्रमांक (Contact / WhatsApp):</strong> +91 8459568940</p>
+</blockquote>
+<hr>
+<h2>📑 अनुक्रमणिका (Table of Contents)</h2>
+<ol>
+<li><a href="#%E0%A5%A7-%E0%A4%AA%E0%A5%8D%E0%A4%B0%E0%A4%B8%E0%A5%8D%E0%A4%A4%E0%A4%BE%E0%A4%B5%E0%A4%A8%E0%A4%BE-%E0%A4%86%E0%A4%A3%E0%A4%BF-%E0%A4%AA%E0%A5%8D%E0%A4%B0%E0%A4%A3%E0%A4%BE%E0%A4%B2%E0%A5%80-%E0%A4%B5%E0%A4%BF%E0%A4%B9%E0%A4%82%E0%A4%97%E0%A4%BE%E0%A4%B5%E0%A4%B2%E0%A5%8B%E0%A4%95%E0%A4%A8">प्रस्तावना आणि प्रणाली विहंगावलोकन (Introduction &amp; System Overview)</a></li>
+<li><a href="#%E0%A4%AD%E0%A4%BE%E0%A4%97-%E0%A5%A7-%E0%A4%B6%E0%A5%87%E0%A4%A4%E0%A4%95%E0%A4%B0%E0%A5%80--%E0%A4%97%E0%A5%8D%E0%A4%B0%E0%A4%BE%E0%A4%B9%E0%A4%95-%E0%A4%AA%E0%A5%8D%E0%A4%B0%E0%A4%B6%E0%A4%BF%E0%A4%95%E0%A5%8D%E0%A4%B7%E0%A4%A3-%E0%A4%AE%E0%A4%BE%E0%A4%B0%E0%A5%8D%E0%A4%97%E0%A4%A6%E0%A4%B0%E0%A5%8D%E0%A4%B6%E0%A4%95-end-user-guide">भाग १: शेतकरी / ग्राहक प्रशिक्षण मार्गदर्शक (End-User / Farmers Guide)</a><ul>
+<li><a href="#%E0%A5%A7%E0%A5%A7-%E0%A4%AA%E0%A5%8B%E0%A4%B0%E0%A5%8D%E0%A4%9F%E0%A4%B2-%E0%A4%95%E0%A4%B8%E0%A5%87-%E0%A4%89%E0%A4%98%E0%A4%A1%E0%A4%BE%E0%A4%B5%E0%A5%87">१.१ पोर्टल कसे उघडावे? (Accessing the Portal)</a></li>
+<li><a href="#%E0%A5%A7%E0%A5%A8-ai-%E0%A4%95%E0%A5%83%E0%A4%B7%E0%A5%80-%E0%A4%AE%E0%A4%BF%E0%A4%A4%E0%A5%8D%E0%A4%B0---%E0%A4%A5%E0%A5%87%E0%A4%9F-%E0%A4%A8%E0%A5%85%E0%A4%B5%E0%A5%8D%E0%A4%B9%E0%A4%AC%E0%A4%BE%E0%A4%B0%E0%A4%96%E0%A4%BE%E0%A4%B2%E0%A5%80-%E0%A4%B6%E0%A5%87%E0%A4%A4%E0%A5%80-%E0%A4%B8%E0%A4%B2%E0%A5%8D%E0%A4%B2%E0%A4%BE%E0%A4%97%E0%A4%BE%E0%A4%B0">१.२ AI कृषी मित्र - थेट नॅव्हबारखाली शेती सल्लागार (AI Krushi Mitra Guide)</a><ul>
+<li><a href="#a-%E0%A4%AE%E0%A4%B0%E0%A4%BE%E0%A4%A0%E0%A5%80%E0%A4%B9%E0%A4%BF%E0%A4%82%E0%A4%A6%E0%A5%80%E0%A4%A4-%E0%A4%AE%E0%A4%9C%E0%A4%95%E0%A5%82%E0%A4%B0-%E0%A4%9F%E0%A4%BE%E0%A4%88%E0%A4%AA-%E0%A4%95%E0%A4%B0%E0%A5%82%E0%A4%A8-%E0%A4%AA%E0%A5%8D%E0%A4%B0%E0%A4%B6%E0%A5%8D%E0%A4%A8-%E0%A4%B5%E0%A4%BF%E0%A4%9A%E0%A4%BE%E0%A4%B0%E0%A4%A3%E0%A5%87">A. मराठी/हिंदीत मजकूर टाईप करून प्रश्न विचारणे (Text Input)</a></li>
+<li><a href="#b-%E0%A4%AE%E0%A4%BE%E0%A4%88%E0%A4%95%E0%A4%B5%E0%A4%B0-%E0%A4%A5%E0%A5%87%E0%A4%9F-%E0%A4%AE%E0%A4%B0%E0%A4%BE%E0%A4%A0%E0%A5%80%E0%A4%A4-%E0%A4%AC%E0%A5%8B%E0%A4%B2%E0%A5%82%E0%A4%A8-%E0%A4%AA%E0%A5%8D%E0%A4%B0%E0%A4%B6%E0%A5%8D%E0%A4%A8-%E0%A4%B5%E0%A4%BF%E0%A4%9A%E0%A4%BE%E0%A4%B0%E0%A4%A3%E0%A5%87">B. माईकवर थेट मराठीत बोलून प्रश्न विचारणे (Voice Input)</a></li>
+<li><a href="#c-%E0%A4%AA%E0%A4%BF%E0%A4%95%E0%A4%BE%E0%A4%9A%E0%A4%BE--%E0%A4%AA%E0%A4%BE%E0%A4%A8%E0%A4%BE%E0%A4%B5%E0%A4%B0%E0%A5%80%E0%A4%B2-%E0%A4%95%E0%A4%BF%E0%A4%A1%E0%A5%80%E0%A4%9A%E0%A4%BE-%E0%A4%AB%E0%A5%8B%E0%A4%9F%E0%A5%8B-%E0%A4%AA%E0%A4%BE%E0%A4%A0%E0%A4%B5%E0%A4%A3%E0%A5%87">C. पिकाचा / पानावरील किडीचा फोटो पाठवणे (Photo / Image Upload)</a></li>
+<li><a href="#d-%E0%A5%A8-%E0%A4%AE%E0%A4%BF%E0%A4%A8%E0%A4%BF%E0%A4%9F%E0%A4%BE%E0%A4%82%E0%A4%9A%E0%A5%87-%E0%A4%B8%E0%A4%82%E0%A4%AD%E0%A4%BE%E0%A4%B7%E0%A4%A3-%E0%A4%B8%E0%A4%BE%E0%A4%A4%E0%A4%A4%E0%A5%8D%E0%A4%AF">D. २ मिनिटांचे संभाषण सातत्य (2-Minute Session Continuity)</a></li>
+<li><a href="#e-%E0%A4%8F%E0%A4%95%E0%A4%BE%E0%A4%9A-%E0%A4%94%E0%A4%B7%E0%A4%A7%E0%A4%BE%E0%A4%9A%E0%A4%BE-%E0%A4%B5%E0%A4%BE%E0%A4%AA%E0%A4%B0-%E0%A4%9F%E0%A4%BE%E0%A4%B3%E0%A4%A3%E0%A5%87-%E0%A4%B5-%E0%A4%AF%E0%A5%8B%E0%A4%97%E0%A5%8D%E0%A4%AF-%E0%A4%95%E0%A5%89%E0%A4%AE%E0%A5%8D%E0%A4%AC%E0%A4%BF%E0%A4%A8%E0%A5%87%E0%A4%B6%E0%A4%A8%E0%A4%9A%E0%A5%87-%E0%A4%AE%E0%A4%B9%E0%A4%A4%E0%A5%8D%E0%A4%A4%E0%A5%8D%E0%A4%B5">E. एकाच औषधाचा वापर टाळणे व योग्य कॉम्बिनेशनचे महत्त्व</a></li>
+<li><a href="#f-%E0%A4%86%E0%A4%A7%E0%A5%80-%E0%A4%96%E0%A4%B0%E0%A5%87%E0%A4%A6%E0%A5%80-%E0%A4%95%E0%A5%87%E0%A4%B2%E0%A5%87%E0%A4%B2%E0%A5%8D%E0%A4%AF%E0%A4%BE-%E0%A4%AC%E0%A4%BF%E0%A4%B2%E0%A4%BE%E0%A4%9A%E0%A5%80-%E0%A4%94%E0%A4%B7%E0%A4%A7%E0%A5%87-%E0%A4%9C%E0%A4%BE%E0%A4%A3%E0%A5%82%E0%A4%A8-%E0%A4%98%E0%A5%87%E0%A4%A3%E0%A5%87">F. आधी खरेदी केलेल्या बिलाची औषधे जाणून घेणे (Billing Mobile Number Lookup)</a></li>
+<li><a href="#g-%E0%A4%A8%E0%A4%BF%E0%A4%B2%E0%A5%87%E0%A4%B6-%E0%A4%A6%E0%A4%B5%E0%A4%82%E0%A4%97%E0%A5%87-%E0%A4%AF%E0%A4%BE%E0%A4%82%E0%A4%9A%E0%A5%8D%E0%A4%AF%E0%A4%BE%E0%A4%B6%E0%A5%80-whatsapp-%E0%A4%B5%E0%A4%B0-%E0%A4%B8%E0%A4%82%E0%A4%AA%E0%A4%B0%E0%A5%8D%E0%A4%95-%E0%A4%B5-%E0%A4%B9%E0%A5%8B%E0%A4%AE-%E0%A4%A1%E0%A4%BF%E0%A4%B2%E0%A4%BF%E0%A4%B5%E0%A5%8D%E0%A4%B9%E0%A4%B0%E0%A5%80">G. निलेश दवंगे यांच्याशी WhatsApp वर संपर्क व होम डिलिव्हरी</a></li>
+<li><a href="#h-%E0%A4%97%E0%A5%88%E0%A4%B0-%E0%A4%95%E0%A5%83%E0%A4%B7%E0%A5%80-%E0%A4%B5%E0%A4%BF%E0%A4%B7%E0%A4%AF%E0%A4%BE%E0%A4%82%E0%A4%B5%E0%A4%B0-%E0%A4%B8%E0%A5%81%E0%A4%B0%E0%A4%95%E0%A5%8D%E0%A4%B7%E0%A4%BE-%E0%A4%A8%E0%A4%BF%E0%A4%AF%E0%A4%AE">H. गैर-कृषी विषयांवर सुरक्षा नियम (Strict Agricultural Guardrails)</a></li>
+</ul>
+</li>
+<li><a href="#%E0%A5%A7%E0%A5%A9-%E0%A4%89%E0%A4%A4%E0%A5%8D%E0%A4%AA%E0%A4%BE%E0%A4%A6%E0%A4%A8%E0%A4%BE%E0%A4%82%E0%A4%9A%E0%A5%80-%E0%A4%AF%E0%A4%BE%E0%A4%A6%E0%A5%80-%E0%A4%AA%E0%A4%BE%E0%A4%B9%E0%A4%A3%E0%A5%87-%E0%A4%B5-%E0%A4%B6%E0%A5%8B%E0%A4%A7%E0%A4%A3%E0%A5%87">१.३ उत्पादनांची यादी पाहणे व शोधणे (Product Catalog Browsing &amp; Search)</a></li>
+<li><a href="#%E0%A5%A7%E0%A5%AA-%E0%A4%89%E0%A4%A4%E0%A5%8D%E0%A4%AA%E0%A4%BE%E0%A4%A6%E0%A4%A8-%E0%A4%AE%E0%A4%BE%E0%A4%97%E0%A4%A3%E0%A5%80-%E0%A4%A8%E0%A5%8B%E0%A4%82%E0%A4%A6%E0%A4%B5%E0%A4%A3%E0%A5%87">१.४ उत्पादन मागणी नोंदवणे (Online Product Demand Request)</a></li>
+<li><a href="#%E0%A5%A7%E0%A5%AB-%E0%A4%B8%E0%A4%82%E0%A4%AA%E0%A4%B0%E0%A5%8D%E0%A4%95-%E0%A4%B5-%E0%A4%A6%E0%A5%81%E0%A4%95%E0%A4%BE%E0%A4%A8%E0%A4%BE%E0%A4%9A%E0%A4%BE-%E0%A4%AA%E0%A4%A4%E0%A5%8D%E0%A4%A4%E0%A4%BE">१.५ संपर्क व दुकानाचा पत्ता (Contact &amp; Location)</a></li>
+</ul>
+</li>
+<li><a href="#%E0%A4%AD%E0%A4%BE%E0%A4%97-%E0%A5%A8-%E0%A4%B5%E0%A5%8D%E0%A4%AF%E0%A4%B5%E0%A4%B8%E0%A5%8D%E0%A4%A5%E0%A4%BE%E0%A4%AA%E0%A4%95--%E0%A5%B2%E0%A4%A1%E0%A4%AE%E0%A4%BF%E0%A4%A8-%E0%A4%AA%E0%A5%8D%E0%A4%B0%E0%A4%B6%E0%A4%BF%E0%A4%95%E0%A5%8D%E0%A4%B7%E0%A4%A3-%E0%A4%AE%E0%A4%BE%E0%A4%B0%E0%A5%8D%E0%A4%97%E0%A4%A6%E0%A4%B0%E0%A5%8D%E0%A4%B6%E0%A4%95-admin-guide">भाग २: व्यवस्थापक / ॲडमिन प्रशिक्षण मार्गदर्शक (Admin Portal Guide)</a><ul>
+<li><a href="#%E0%A5%A8%E0%A5%A7-%E0%A4%B5%E0%A5%8D%E0%A4%AF%E0%A4%B5%E0%A4%B8%E0%A5%8D%E0%A4%A5%E0%A4%BE%E0%A4%AA%E0%A4%95-%E0%A4%B2%E0%A5%89%E0%A4%97%E0%A4%BF%E0%A4%A8-admin-login">२.१ व्यवस्थापक लॉगिन (Admin Login)</a></li>
+<li><a href="#%E0%A5%A8%E0%A5%A8-%E0%A4%A8%E0%A4%B5%E0%A5%80%E0%A4%A8-%E0%A4%A1%E0%A4%BF%E0%A4%9C%E0%A4%BF%E0%A4%9F%E0%A4%B2-%E0%A4%AC%E0%A4%BF%E0%A4%B2-%E0%A4%A4%E0%A4%AF%E0%A4%BE%E0%A4%B0-%E0%A4%95%E0%A4%B0%E0%A4%A3%E0%A5%87-create-digital-invoice">२.२ नवीन डिजिटल बिल तयार करणे (Create Digital Invoice - /admin/billing)</a><ul>
+<li><a href="#a-%E0%A4%A1%E0%A4%BF%E0%A4%9C%E0%A4%BF%E0%A4%9F%E0%A4%B2-%E0%A4%AC%E0%A4%BF%E0%A4%B2-%E0%A4%86%E0%A4%AF%E0%A4%A1%E0%A5%80">A. डिजिटल बिल आयडी (Digital Bill ID - SKSK-YYYYMMDD-HHMMSS-XX)</a></li>
+<li><a href="#b-%E0%A4%97%E0%A5%8D%E0%A4%B0%E0%A4%BE%E0%A4%B9%E0%A4%95%E0%A4%BE%E0%A4%9A%E0%A5%80-%E0%A4%AE%E0%A4%BE%E0%A4%B9%E0%A4%BF%E0%A4%A4%E0%A5%80-%E0%A4%AD%E0%A4%B0%E0%A4%A3%E0%A5%87">B. ग्राहकाची माहिती भरणे (Customer Details)</a></li>
+<li><a href="#c-%E0%A4%96%E0%A4%B0%E0%A5%87%E0%A4%A6%E0%A5%80-%E0%A4%AE%E0%A4%BE%E0%A4%B2%E0%A4%BE%E0%A4%9A%E0%A5%80-%E0%A4%A8%E0%A5%8B%E0%A4%82%E0%A4%A6-%E0%A4%B5-%E0%A4%AE%E0%A5%8B%E0%A4%AC%E0%A4%BE%E0%A4%88%E0%A4%B2-%E0%A4%B8%E0%A5%8D%E0%A4%B5%E0%A4%BE%E0%A4%88%E0%A4%AA-%E0%A4%9F%E0%A5%87%E0%A4%AC%E0%A4%B2">C. खरेदी मालाची नोंद व मोबाईल स्वाईप टेबल (Items Table)</a></li>
+<li><a href="#d-%E0%A4%85%E0%A4%95%E0%A5%8D%E0%A4%B7%E0%A4%B0%E0%A5%80-%E0%A4%8F%E0%A4%95%E0%A5%82%E0%A4%A3-%E0%A4%B0%E0%A4%95%E0%A5%8D%E0%A4%95%E0%A4%AE-%E0%A4%B5-%E0%A4%B8%E0%A4%BE%E0%A4%B0%E0%A4%BE%E0%A4%82%E0%A4%B6">D. अक्षरी एकूण रक्कम व सारांश (Grand Total)</a></li>
+<li><a href="#e-%E0%A5%A9-%E0%A4%AE%E0%A5%81%E0%A4%96%E0%A5%8D%E0%A4%AF-%E0%A5%B2%E0%A4%95%E0%A5%8D%E0%A4%B6%E0%A4%A8-%E0%A4%AC%E0%A4%9F%E0%A4%A3%E0%A5%87">E. ३ मुख्य ॲक्शन बटणे (PDF, Print &amp; Save)</a></li>
+<li><a href="#f-%E0%A4%A1%E0%A4%BF%E0%A4%9C%E0%A4%BF%E0%A4%9F%E0%A4%B2-%E0%A4%AA%E0%A4%BE%E0%A4%B5%E0%A4%A4%E0%A5%80-%E0%A4%AA%E0%A5%8D%E0%A4%B0%E0%A4%BF%E0%A4%B5%E0%A5%8D%E0%A4%B9%E0%A5%8D%E0%A4%AF%E0%A5%82-%E0%A4%AE%E0%A5%89%E0%A4%A1%E0%A5%87%E0%A4%B2">F. डिजिटल पावती प्रिव्ह्यू मॉडेल (A4 Invoice Template)</a></li>
+</ul>
+</li>
+<li><a href="#%E0%A5%A8%E0%A5%A9-%E0%A4%AC%E0%A4%BF%E0%A4%B2%E0%A4%BE%E0%A4%82%E0%A4%9A%E0%A4%BE-%E0%A4%87%E0%A4%A4%E0%A4%BF%E0%A4%B9%E0%A4%BE%E0%A4%B8-%E0%A4%B5-%E0%A4%B6%E0%A5%8B%E0%A4%A7-bill-history">२.३ बिलांचा इतिहास व शोध (Bill History - /admin/bills)</a></li>
+<li><a href="#%E0%A5%A8%E0%A5%AA-%E0%A4%B2%E0%A4%BE%E0%A4%B2-%E0%A4%B0%E0%A4%82%E0%A4%97%E0%A4%BE%E0%A4%9A%E0%A4%BE-%E0%A4%B8%E0%A4%82%E0%A4%AA%E0%A4%BE%E0%A4%A6%E0%A4%A8-%E0%A4%AE%E0%A5%8B%E0%A4%A1-red-update-mode">२.४ लाल रंगाचा संपादन मोड (Red Update / Edit Mode)</a><ul>
+<li><a href="#a-%E0%A4%B8%E0%A4%82%E0%A4%AA%E0%A4%BE%E0%A4%A6%E0%A4%A8-%E0%A4%AE%E0%A5%8B%E0%A4%A1-%E0%A4%B8%E0%A5%81%E0%A4%B0%E0%A5%82-%E0%A4%95%E0%A4%B0%E0%A4%A3%E0%A5%87">A. संपादन मोड सुरू करणे (Entering Edit Mode)</a></li>
+<li><a href="#b-%E0%A4%B2%E0%A4%BE%E0%A4%B2-%E0%A4%B0%E0%A4%82%E0%A4%97%E0%A4%BE%E0%A4%9A%E0%A5%80-%E0%A5%A9-%E0%A4%85%E0%A4%AA%E0%A4%A1%E0%A5%87%E0%A4%9F-%E0%A4%AC%E0%A4%9F%E0%A4%A3%E0%A5%87">B. लाल रंगाची ३ अपडेट बटणे</a></li>
+<li><a href="#c-%E0%A4%AC%E0%A4%A6%E0%A4%B2-%E0%A4%87%E0%A4%A4%E0%A4%BF%E0%A4%B9%E0%A4%BE%E0%A4%B8--%E0%A4%91%E0%A4%A1%E0%A4%BF%E0%A4%9F-%E0%A4%B2%E0%A5%89%E0%A4%97">C. बदल इतिहास / ऑडिट लॉग (Audit Log of Changes)</a></li>
+</ul>
+</li>
+<li><a href="#%E0%A5%A8%E0%A5%AB-%E0%A4%A1%E0%A5%87%E0%A4%9F%E0%A4%BE%E0%A4%AC%E0%A5%87%E0%A4%B8-%E0%A4%B8%E0%A5%8D%E0%A4%9F%E0%A5%8B%E0%A4%B0%E0%A5%87%E0%A4%9C-%E0%A4%B0%E0%A4%9A%E0%A4%A8%E0%A4%BE">२.५ डेटाबेस स्टोरेज रचना (Supabase Database Architecture)</a></li>
+</ul>
+</li>
+<li><a href="#%E0%A4%AD%E0%A4%BE%E0%A4%97-%E0%A5%A9-%E0%A4%A4%E0%A4%BE%E0%A4%82%E0%A4%A4%E0%A5%8D%E0%A4%B0%E0%A4%BF%E0%A4%95-%E0%A4%B8%E0%A4%AE%E0%A4%B8%E0%A5%8D%E0%A4%AF%E0%A4%BE-%E0%A4%B5-%E0%A4%89%E0%A4%AA%E0%A4%BE%E0%A4%AF-troubleshooting">भाग ३: तांत्रिक समस्या व उपाय (Troubleshooting &amp; FAQs)</a></li>
+</ol>
+<hr>
+<h1>१. प्रस्तावना आणि प्रणाली विहंगावलोकन</h1>
+<p><strong>स्वराज कृषी सेवा केंद्र</strong> हे ग्रामीण भागातील शेतकरी बांधवांना आणि कृषी केंद्र चालकांना आधुनिक डिजिटल तंत्रज्ञानाशी जोडणारे एकात्मिक वेब पोर्टल आहे.</p>
+<h3>🌟 प्रमुख वैशिष्ट्ये:</h3>
+<ol>
+<li><strong>शेतकऱ्यांसाठी (Farmers)</strong>:<ul>
+<li>२४ तास मोफत उपलब्ध असणारा <strong>AI कृषी मित्र</strong>.</li>
+<li>पिकांवरील रोग, किडीचा प्रादुर्भाव, फवारणी डोस यावर तात्काळ अचूक मार्गदर्शन.</li>
+<li>बिलातील औषधांचे प्रमाण जाणून घेण्यासाठी १०-अंकी मोबाईल नंबरने शोध.</li>
+<li>दुकानात उपलब्ध असलेल्या खते, बियाणे व औषधांची सूची व WhatsApp खरेदी.</li>
+</ul>
+</li>
+<li><strong>दुकान व्यवस्थापकांसाठी (Admin / Nilesh Davange)</strong>:<ul>
+<li>सेकंदाच्या टाईमस्टॅम्पसह डिजिटल युनिक बिल आयडी जनरेशन.</li>
+<li>फोन, टॅब्लेट व कॉम्प्युटरवर काम करणारी १००% रिस्पॉन्सिव्ह बिलिंग प्रणाली.</li>
+<li>A4 आकाराची प्रमाणित जीएसटी/नॉन-जीएसटी डिजिटल पावती (PDF डाऊनलोड व डायरेक्ट प्रिंट).</li>
+<li>एका क्लिकवर सुरक्षित क्लाउड डेटाबेस (Supabase) मध्ये कायमस्वरूपी साठवणूक.</li>
+<li>जुन्या बिलांमध्ये सुधारणा करण्यासाठी <strong>लाल रंगाचा संपादन मोड (Red Edit Mode)</strong> व बदल इतिहास (Audit Trail).</li>
+</ul>
+</li>
+</ol>
+<hr>
+<h1>भाग १: शेतकरी / ग्राहक प्रशिक्षण मार्गदर्शक (End-User Guide)</h1>
+<hr>
+<h2>१.१ पोर्टल कसे उघडावे?</h2>
+<ol>
+<li>कोणत्याही स्मार्टफोन, टॅबलेट किंवा कॉम्प्युटरवरील इंटरनेट ब्राउझर (उदा. Google Chrome, Safari, Firefox) उघडा.</li>
+<li><strong>स्वराज कृषी सेवा केंद्र</strong> पोर्टलच्या लिंकवर जा.</li>
+<li>पोर्टल सर्व उपकरणांवर आपोआप जुळवून घेते (Mobile Responsive). फोन आडवा न करता सरळ धरूनही सर्व पाने स्वच्छ दिसतात.</li>
+</ol>
+<hr>
+<h2>१.२ AI कृषी मित्र - थेट नॅव्हबारखाली शेती सल्लागार</h2>
+<p>पोर्टल उघडल्याबरोबर वरच्या हिरव्या नॅव्हबारच्या (Navbar) बरोबर खाली <strong>&quot;🌾 AI कृषी मित्र (Swaraj AI Assistant)&quot;</strong> ही आधुनिक चॅट विंडो दिसेल.</p>
+<pre><code>+-------------------------------------------------------------+
+|  [Logo] स्वराज कृषी सेवा केंद्र           [Menu ☰] [Admin 🔐]  |  &lt;- नॅव्हबार (Navbar)
++-------------------------------------------------------------+
+|  🌾 AI कृषी मित्र • मराठी / हिंदी / English • २४x७ उपलब्ध       |  &lt;- थेट नॅव्हबारखाली
+|                                                             |
+|  [AI]: नमस्कार शेतकरी बंधूंनो! 🙏 मी &#39;स्वराज AI कृषी मित्र&#39; ... |
+|                                                             |
+|  [टोमॅटोवरील अळी] [कांदा करपा] [द्राक्ष बागेची छाटणी] [ऊस खते]  |  &lt;- सुचवलेले प्रश्न
+|                                                             |
+|  [📷 फोटो] [🎙️ बोला] [आपला प्रश्न मराठीत विचारा...    ] [➤ पाठवा]|
++-------------------------------------------------------------+
+</code></pre>
+<h3>A. मराठी/हिंदीत मजकूर टाईप करून प्रश्न विचारणे</h3>
+<ol>
+<li>चॅट बॉक्सच्या खालील पांढऱ्या इनपुट पट्टीवर टॅप करा.</li>
+<li>तुमच्या मोबाईलच्या मराठी किंवा इंग्रजी कीबोर्डने प्रश्न टाईप करा.<ul>
+<li><em>उदा. &quot;माझ्या टोमॅटो पिकावर काळे डाग पडले आहेत, काय फवारावे?&quot;</em></li>
+<li><em>उदा. &quot;सोयाबीन पिवळे पडत आहे, कोणते खत द्यावे?&quot;</em></li>
+</ul>
+</li>
+<li>उजव्या बाजूच्या हिरव्या बाण बटणावर (<strong>➤</strong>) क्लिक करा.</li>
+<li>AI कृषी मित्र २ ते ३ सेकंदात सविस्तर व योग्य सल्ला देईल.</li>
+</ol>
+<h3>B. माईकवर थेट मराठीत बोलून प्रश्न विचारणे</h3>
+<p>जर शेतकऱ्याला मराठीत टाईप करणे कठीण वाटत असेल, तर ते थेट तोंडातून बोलून विचारू शकतात:</p>
+<ol>
+<li>इनपुट पट्टीच्या डाव्या बाजूला असलेल्या <strong>माईक चिन्हावर (🎙️)</strong> टॅप करा.</li>
+<li>ब्राउझर पहिल्यांदा &quot;Allow Microphone Access&quot; विचारेल, त्यावर <strong>Allow (परवानगी द्या)</strong> दाबा.</li>
+<li>माईक बटण लाल रंगात ब्लिंक (Pulse) होऊ लागेल.</li>
+<li>स्पष्ट आवाजात तुमचा प्रश्न मराठीत बोला:<ul>
+<li><em>उदा. &quot;कपाशीवर बोंडअळी आली आहे, औषध सांगा&quot;</em></li>
+</ul>
+</li>
+<li>तुमचे बोलणे संपल्यावर माईक आपोआप बंद होईल व तुमचे शब्द चॅट बॉक्समध्ये टाईप होऊन प्रश्न आपोआप विचारला जाईल.</li>
+</ol>
+<h3>C. पिकाचा / पानावरील किडीचा फोटो पाठवणे</h3>
+<p>रोगाचे अचूक निदान होण्यासाठी शेतकरी थेट पानाचा फोटो पाठवू शकतात:</p>
+<ol>
+<li>माईकच्या शेजारील <strong>कॅमेरा चिन्हावर (📷)</strong> टॅप करा.</li>
+<li>तुमच्या मोबाईलचा कॅमेरा उघडून खराब झालेल्या पानावरील किंवा किडीचा स्पष्ट फोटो काढा, किंवा गॅलरीतून निवडा.</li>
+<li>फोटो चॅट बॉक्सच्या वर थंबनेल स्वरूपात दिसेल.</li>
+<li>सोबत काही लिहायचे असल्यास टाईप करा किंवा थेट <strong>➤ पाठवा</strong> बटण दाबा.</li>
+<li>AI त्या फोटोचे विश्लेषण करून कोणता रोग/कीड आहे आणि त्यावर कोणते औषध उपलब्ध आहे हे स्पष्ट सांगेल.</li>
+</ol>
+<h3>D. २ मिनिटांचे संभाषण सातत्य (2-Minute Session Continuity)</h3>
+<ul>
+<li>शेतकऱ्याने विचारलेल्या प्रश्नाचे संदर्भ AI पुढच्या <strong>२ मिनिटांपर्यंत</strong> लक्षात ठेवते.</li>
+<li>जर AI ने विचारले: <em>&quot;रोगाचा प्रादुर्भाव पानांच्या वरच्या बाजूला आहे की खालच्या?&quot;</em></li>
+<li>आणि शेतकऱ्याने फक्त <em>&quot;खालच्या बाजूला&quot;</em> असे उत्तर दिले, तरी AI समजून घेते की हे मागील पिकाबद्दलच चालू आहे.</li>
+<li>जर २ मिनिटे कोणतीही हालचाल झाली नाही किंवा शेतकर्‍याने पान रिफ्रेश केले, तर नवीन सत्र सुरू होते.</li>
+</ul>
+<h3>E. एकाच औषधाचा वापर टाळणे व योग्य कॉम्बिनेशनचे महत्त्व</h3>
+<ul>
+<li><strong>महत्त्वाची शेती खबरदारी</strong>: बाजारात उपलब्ध असणारे कोणतेही एक कीटकनाशक किंवा बुरशीनाशक एकटे फवारल्यास पिकावर हवा तसा रिझल्ट येत नाही किंवा त्याचे दुष्परिणाम (Side Effects) होण्याची भीती असते.</li>
+<li>म्हणूनच AI कृषी मित्र एका औषधाचे उदाहरण देताना स्पष्ट चेतावणी देतो:<blockquote>
+<p><em>&quot;केवळ एका औषधावर अवलंबून न राहता सोबत योग्य टॉनिक/स्टिकर किंवा पूरक औषधाचे प्रमाण घेणे आवश्यक आहे. पिकाचे नुकसान टाळण्यासाठी व योग्य डोससाठी निलेश दवंगे यांच्याशी संपर्क साधा.&quot;</em></p>
+</blockquote>
+</li>
+</ul>
+<h3>F. आधी खरेदी केलेल्या बिलाची औषधे जाणून घेणे</h3>
+<p>जर एखाद्या शेतकऱ्याने स्वराज कृषी सेवा केंद्रातून आधी औषधे खरेदी केली असतील आणि त्याला घरी गेल्यावर <strong>औषध किती पाण्यात टाकायचे किंवा कसे फवारायचे</strong> हे आठवत नसेल:</p>
+<ol>
+<li>AI कृषी मित्राला बिलात नोंदवलेला <strong>१०-अंकी मोबाईल नंबर</strong> सांगा (उदा. <code>9876543210</code>).</li>
+<li>AI त्वरित डेटाबेसमधून त्या नंबरवरील खरेदीचे बिल शोधून काढेल.</li>
+<li>बिलात असलेल्या औषधांची नावे, पंपासाठी पाण्याचे योग्य प्रमाण (उदा. १५ लिटर पाण्यासाठी किती मि.ली./ग्रॅम) आणि घ्यावयाची काळजी मराठीत समजावून सांगेल.</li>
+</ol>
+<h3>G. निलेश दवंगे यांच्याशी WhatsApp वर संपर्क व होम डिलिव्हरी</h3>
+<ul>
+<li>प्रत्येक AI उत्तराच्या खाली <strong>&quot;💬 निलेश दवंगे यांना WhatsApp वर विचारा&quot;</strong> हे बटण असते.</li>
+<li>त्यावर क्लिक करताच शेतकऱ्याचा संपूर्ण संवाद व विचारलेले प्रश्न निलेश दवंगे यांच्या अधिकृत WhatsApp नंबरवर (<code>+91 8459568940</code>) थेट उघडतो.</li>
+<li>शेतकरी फोनवर चर्चा करून आपल्या शेतात <strong>औषधे घरपोच (Home Delivery)</strong> मागवू शकतात.</li>
+</ul>
+<h3>H. गैर-कृषी विषयांवर सुरक्षा नियम (Strict Agricultural Guardrails)</h3>
+<ul>
+<li>जर कोणी शेतीव्यतिरिक्त इतर विषय (राजकारण, चित्रपट, सामान्य ज्ञान, कोडिंग इ.) विचारले, तर AI वेळ वाया न घालवता विनम्रपणे नकार देईल:<blockquote>
+<p><em>&quot;माफ करा, मी &#39;स्वराज कृषी सेवा केंद्राचा&#39; शेती सल्लागार आहे. मी फक्त शेती, पिके, खते, औषधे आणि आमच्या दुकानातील उत्पादनांबद्दल मार्गदर्शन करू शकतो. कृपया शेतीविषयक प्रश्न विचारा.&quot;</em></p>
+</blockquote>
+</li>
+</ul>
+<hr>
+<h2>१.३ उत्पादनांची यादी पाहणे व शोधणे</h2>
+<ol>
+<li>मेनूमधील <strong>&quot;उत्पादने (Products)&quot;</strong> या पानावर जा.</li>
+<li>वरती उपलब्ध असणाऱ्या सर्च बारमध्ये खताचे, कीटकनाशकाचे किंवा कंपनीचे नाव टाईप करून झटपट उत्पादन शोधा.</li>
+<li>विविध कॅटेगरी बटणांवर टॅप करून वर्गीकरण पहा:<ul>
+<li><code>सर्व</code>, <code>कीटकनाशके</code>, <code>बुरशीनाशके</code>, <code>खते</code>, <code>तणनाशके</code>, <code>बियाणे</code>, <code>टॉनिक व संजीवके</code>.</li>
+</ul>
+</li>
+<li>उत्पादनाच्या कार्डवर क्लिक केल्यास <strong>पॅक साईझ, किंमत, वापरण्याची पद्धत आणि सुरक्षितता मार्गदर्शक सूचना</strong> दिसतील.</li>
+<li><strong>&quot;WhatsApp वर खरेदीची चौकशी करा&quot;</strong> बटणावर दाबल्यास त्या उत्पादनाचा संदर्भ थेट दुकानाच्या WhatsApp वर जातो.</li>
+</ol>
+<hr>
+<h2>१.४ उत्पादन मागणी नोंदवणे (Product Demand Request)</h2>
+<p>जर शेतकऱ्याला हवे असलेले विशिष्ट औषध किंवा बियाणे दुकानात त्या क्षणी उपलब्ध नसेल:</p>
+<ol>
+<li>मेनूमधील <strong>&quot;उत्पादन मागणी&quot;</strong> या पानावर जा.</li>
+<li>आपले नाव, मोबाईल नंबर, गावाचा पत्ता आणि हव्या असलेल्या उत्पादनाचे नाव भरा.</li>
+<li>सबमिट केल्यावर स्वराज कृषी सेवा केंद्राला मागणी समजते आणि माल दुकानात आल्यावर शेतकऱ्याला फोन करून कळवले जाते.</li>
+</ol>
+<hr>
+<h2>१.५ संपर्क व दुकानाचा पत्ता</h2>
+<ul>
+<li><strong>&quot;संपर्क&quot;</strong> पानावर दुकानाचा अचूक Google Map, पत्ता (कानमंडाळे, चांदवड) आणि थेट कॉलिंग/WhatsApp लिंक्स उपलब्ध आहेत.</li>
+<li>स्क्रीनच्या उजव्या कोपऱ्यात नेहमी <strong>फ्लोटिंग WhatsApp बटण</strong> उपलब्ध असते.</li>
+</ul>
+<hr>
+<h1>भाग २: व्यवस्थापक / ॲडमिन प्रशिक्षण मार्गदर्शक (Admin Guide)</h1>
+<hr>
+<h2>२.१ व्यवस्थापक लॉगिन (Admin Login)</h2>
+<ol>
+<li><strong>लॉगिन लिंक</strong>: पोर्टलच्या वरच्या उजव्या बाजूला <strong>&quot;🔐 Admin&quot;</strong> लिंकवर क्लिक करा किंवा थेट ब्राउझरमध्ये <code>/admin/login</code> उघडा.</li>
+<li><strong>माहिती प्रविष्ट करा</strong>:<ul>
+<li><strong>ईमेल आयडी</strong>: व्यवस्थापकाचा अधिकृत नोंदणीकृत ईमेल (उदा. <code>admin@swarajksk.com</code>).</li>
+<li><strong>पासवर्ड</strong>: गोपनीय पासवर्ड टाका.</li>
+</ul>
+</li>
+<li><strong>&quot;सुरक्षित लॉगिन करा&quot;</strong> बटणावर क्लिक करा.</li>
+<li>लॉगिन यशस्वी झाल्यावर व्यवस्थापक थेट <strong>&quot;डिजिटल बिल तयार करा (<code>/admin/billing</code>)&quot;</strong> या पानावर पोहोचेल.</li>
+<li><strong>लॉगआउट</strong>: काम झाल्यावर नॅव्हबारमधील <strong>&quot;👤 ॲडमिन (लॉगआउट)&quot;</strong> किंवा मोबाईल ड्रॉवरमधील लाल रंगाच्या <strong>&quot;🚪 बाहेर पडा&quot;</strong> बटणावर टॅप करा.</li>
+</ol>
+<hr>
+<h2>२.२ नवीन डिजिटल बिल तयार करणे (Create Digital Invoice)</h2>
+<p>URL: <code>/admin/billing</code></p>
+<pre><code>+-------------------------------------------------------------+
+| 🧾 नवीन डिजिटल बिल (Create Digital Bill)                     |
+| [📋 सर्व बिले पहा]                                          |
++-------------------------------------------------------------+
+| 👤 ग्राहकाची व डिजिटल बिलाची माहिती                         |
+|                                                             |
+| डिजिटल बिल आयडी: [SKSK-YYYYMMDD-HHMMSS-XX (Read-Only)    ]  |
+| बिलाची तारीख:    [DD/MM/YYYY]    पेमेंट प्रकार: [Cash / UPI]   |
+| ग्राहकाचे नाव *: [उदा. राहुल शिवाजी पाटील                 ]  |
+| मोबाईल क्रमांक*: [१० अंकी मोबाईल (प्रायमरी की)             ]  |
+| पत्ता / गाव:     [मु. पो. कानमंडाळे, ता. चांदवड            ]  |
++-------------------------------------------------------------+
+| 🌾 खरेदी मालाचा तपशील (Purchased Items)                     |
+| 👉 डावीकडे सरकवून उत्पादनांचे सर्व रकाने भरा                 |
+|                                                             |
+| # | उत्पादनाचे नाव * | प्रमाण * | एकक | दर ₹ * | रक्कम ₹ | ✕|
+| 1 | कोराजन           | 2        | बाटली| 1200   | 2400.00|  |
+|                                                             |
+| [➕ आणखी उत्पादन जोडा]                                        |
++-------------------------------------------------------------+
+| अक्षरी रक्कम: दोन हजार चारशे रुपये फक्त                     |
+| एकूण देय रक्कम (Grand Total): ₹ 2,400.00                   |
++-------------------------------------------------------------+
+| [🔄 रीसेट]  [💾 फक्त सेव्ह] [🖨️ थेट प्रिंट] [📥 PDF डाऊनलोड] |
++-------------------------------------------------------------+
+</code></pre>
+<h3>A. डिजिटल बिल आयडी (Digital Bill ID)</h3>
+<ul>
+<li>हा क्रमांक युनिक असतो आणि त्याचा फॉरमॅट: <code>SKSK-YYYYMMDD-HHMMSS-XX</code> असा असतो.</li>
+<li>हा आयडी <strong>वाचनीय (Read-Only)</strong> आहे. कोणीही यात फेरफार करू शकत नाही.</li>
+<li>सबमिट बटणावर क्लिक होताच ज्या सेकंदाला बिल तयार होते, त्या सेकंदाचा अचूक टाईमस्टॅम्प डेटाबेसमध्ये नोंदवला जातो.</li>
+</ul>
+<h3>B. ग्राहकाची माहिती भरणे</h3>
+<ol>
+<li><strong>बिलाची तारीख</strong>: आपोआप आजची तारीख येते; हवी असल्यास कॅलेंडरमधून बदलता येते.</li>
+<li><strong>पेमेंट प्रकार</strong>: Cash (रोख), UPI / PhonePe / Google Pay किंवा बाकी (Credit / Pending) निवडा.</li>
+<li><strong>ग्राहकाचे नाव (Customer Name) *</strong>: अनिवार्य फील्ड.</li>
+<li><strong>मोबाईल क्रमांक (Mobile Number) *</strong>:<ul>
+<li><strong>अत्यंत महत्त्वाचे</strong>: येथे +91 किंवा 0 न लावता ग्राहकाचा <strong>१० अंकी अचूक मोबाईल नंबर</strong> टाका.</li>
+<li>हा मोबाईल नंबर डेटाबेसमध्ये ग्राहकाची <strong>प्रायमरी की (Primary Key)</strong> म्हणून वापरला जातो.</li>
+</ul>
+</li>
+<li><strong>पत्ता / गाव</strong>: ग्राहकाचे गाव किंवा वस्तीचे नाव.</li>
+</ol>
+<h3>C. खरेदी मालाची नोंद व मोबाईल स्वाईप टेबल</h3>
+<ol>
+<li><strong>उत्पादनाचे नाव</strong>: औषध, खत किंवा बियाण्याचे नाव टाईप करा.</li>
+<li><strong>प्रमाण (Qty)</strong>: किती संख्या/वजन घेतले ते टाका.</li>
+<li><strong>एकक (Unit Dropdown)</strong>: योग्य एकक निवडा:<ul>
+<li><code>नग (Nos)</code>, <code>बॅग (Bag)</code>, <code>लिटर (Litre)</code>, <code>मि.ली. (ml)</code>, <code>किलो (Kg)</code>, <code>ग्रॅम (Gram)</code>, <code>बाटली (Bottle)</code>, <code>पॅकेट (Packet)</code>.</li>
+</ul>
+</li>
+<li><strong>दर प्रति नग ₹ (Price)</strong>: एका नगाचा किंवा एका लिटरचा दर टाका.</li>
+<li><strong>रक्कम ₹ (Total)</strong>: प्रमाण आणि दर टाकल्यावर एकूण लाईन रक्कम आपोआप अचूक मोजली जाते.</li>
+<li><strong>➕ आणखी उत्पादन जोडा</strong>: एकापेक्षा जास्त औषधे जोडण्यासाठी या बटणावर क्लिक करा.</li>
+<li><strong>काढून टाकणे (✕)</strong>: चुकीची लाईन काढण्यासाठी लाल क्रॉस बटण दाबा.</li>
+<li><strong>📱 मोबाईल स्वाईप टीप</strong>: मोबाईलवर काम करताना टेबल आडवे स्वाईप करता येते, जेणेकरून लहान स्क्रीनवरही दर आणि रक्कम स्पष्ट दिसते.</li>
+</ol>
+<h3>D. अक्षरी एकूण रक्कम व सारांश</h3>
+<ul>
+<li>एकूण देय रक्कम सिस्टीम आपोआप <strong>मराठी अक्षरी शब्दांमध्ये</strong> रूपांतरित करते.<ul>
+<li><em>उदा. ₹ 4,550 -&gt; &quot;चार हजार पाचशे पन्नास रुपये फक्त&quot;</em></li>
+</ul>
+</li>
+</ul>
+<h3>E. ३ मुख्य ॲक्शन बटणे (PDF, Print &amp; Save)</h3>
+<p>फॉर्म भरून झाल्यावर ३ सोयीस्कर पर्यायांपैकी एकावर क्लिक करा:</p>
+<table>
+<thead>
+<tr>
+<th align="left">बटण</th>
+<th align="left">कृती (Action)</th>
+<th align="left">डेटाबेसमध्ये साठवणूक?</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left"><strong>📥 PDF डाऊनलोड व सेव्ह करा</strong></td>
+<td align="left">A4 आकाराची सुंदर अधिकृत डिजिटल पावती PDF स्वरूपात डाऊनलोड होते.</td>
+<td align="left"><strong>होय, कायमस्वरूपी सेव्ह होते.</strong></td>
+</tr>
+<tr>
+<td align="left"><strong>🖨️ थेट प्रिंट व सेव्ह करा</strong></td>
+<td align="left">कॉम्प्युटर किंवा मोबाईलचा डायरेक्ट प्रिंट डायलॉग उघडून प्रिंट निघते.</td>
+<td align="left"><strong>होय, कायमस्वरूपी सेव्ह होते.</strong></td>
+</tr>
+<tr>
+<td align="left"><strong>💾 फक्त डेटा सेव्ह करा</strong></td>
+<td align="left">प्रिंट किंवा PDF न काढता थेट बिलाची डिजिटल नोंद डेटाबेसमध्ये जमा होते.</td>
+<td align="left"><strong>होय, कायमस्वरूपी सेव्ह होते.</strong></td>
+</tr>
+</tbody></table>
+<blockquote>
+<p>⚠️ <strong>सूचना</strong>: वरीलपैकी कोणत्याही बटणावर क्लिक केले तरी ग्राहकाचा डेटा व बिल Supabase क्लाउड स्टोरेजमध्ये सुरक्षित साठवले जाते.</p>
+</blockquote>
+<h3>F. डिजिटल पावती प्रिव्ह्यू मॉडेल (A4 Invoice Template)</h3>
+<ul>
+<li>पावतीमध्ये स्वराज कृषी सेवा केंद्राचे अधिकृत नाव, श्री गणेशाय नमः, पत्ता, मोबाईल, बिल क्र., दिनांक, पेमेंट मोड, उत्पादनांचा सुटसुटीत तक्ता, अक्षरी रक्कम, प्रोप्राईटर स्वाक्षरी आणि शेतकरी बंधूंसाठी सूचना (कीटकनाशके सुरक्षित वापर) समाविष्ट असतात.</li>
+</ul>
+<hr>
+<h2>२.३ बिलांचा इतिहास व शोध (Bill History)</h2>
+<p>URL: <code>/admin/bills</code></p>
+<ol>
+<li><strong>सर्व बिलांची यादी</strong>: दुकानातील सर्व जुनी बिले तारखेनुसार उतरत्या क्रमाने दिसतात.</li>
+<li><strong>झटपट शोध बार (Real-Time Search Bar)</strong>:<ul>
+<li>ग्राहकाचा १०-अंकी मोबाईल नंबर, नाव किंवा बिल क्रमांक टाकून १ सेकंदात कोणतेही बिल शोधता येते.</li>
+</ul>
+</li>
+<li><strong>👁️ बिल उघडा (View Bill)</strong>:<ul>
+<li>या बटणावर क्लिक केल्यास ते संपूर्ण बिल पावती स्वरूपात उघडते.</li>
+<li>तिथून हवे तेव्हा पुन्हा प्रिंट किंवा PDF डाऊनलोड करता येते.</li>
+</ul>
+</li>
+<li><strong>📜 संपादित बिल बॅज (Edited Bill Badge)</strong>:<ul>
+<li>जर बिलामध्ये नंतर काही बदल केले गेले असतील, तर तिथे <code>● संपादित</code> आणि <code>📜 X बदल</code> असा पिवळा बॅज दिसतो.</li>
+</ul>
+</li>
+</ol>
+<hr>
+<h2>२.४ लाल रंगाचा संपादन मोड (Red Update / Edit Mode)</h2>
+<p>जर बिलामध्ये उत्पादनाचे प्रमाण, दर किंवा ग्राहकाचे नाव चुकून भरणे राहिले असेल, तर ते सुरक्षितपणे अपडेट करता येते.</p>
+<pre><code>+-------------------------------------------------------------+
+| ⚠️ बिल संपादन मोड (Edit Bill Mode) - [लाल रंगाची बॉर्डर]     |
++-------------------------------------------------------------+
+| ⚠️ संपादन सूचना: आपण बिल नंबर &#39;SKSK-...&#39; मधील मूळ नोंदी     |
+| बदलत आहात. केलेले सर्व बदल ऑडिट ट्रेलमध्ये नोंदवले जातील.   |
++-------------------------------------------------------------+
+| ग्राहकाचे नाव, पत्ता, तारीख, पेमेंट मोड संपादन                 |
+| उत्पादनांची नावे, प्रमाण, दर बदलणे                          |
+| [➕ आणखी उत्पादन जोडा]                                        |
++-------------------------------------------------------------+
+| [रद्द करा] [💾 फक्त अपडेट] [🖨️ सुधारित प्रिंट] [📥 सुधारित PDF] |
++-------------------------------------------------------------+
+</code></pre>
+<h3>A. संपादन मोड सुरू करणे</h3>
+<ol>
+<li>बिलाच्या व्ह्यूअर विंडोमध्ये वर उजव्या बाजूला असलेल्या <strong>&quot;✏️ बिलामध्ये बदल करा (Edit Bill)&quot;</strong> या लाल बटणावर क्लिक करा.</li>
+<li>संपूर्ण विंडोचा रंग <strong>लाल (Red Theme)</strong> होतो आणि वर स्पष्ट इशारा बॅनर दिसतो.</li>
+<li>व्यवस्थापकाला हवे ते बदल (प्रमाण, नवीन उत्पादन, दर इ.) करता येतात.</li>
+</ol>
+<h3>B. लाल रंगाची ३ अपडेट बटणे</h3>
+<ol>
+<li><strong>📥 सुधारित PDF डाऊनलोड व अपडेट करा</strong>: सुधारित A4 PDF डाऊनलोड होते आणि डेटाबेस अपडेट होतो.</li>
+<li><strong>🖨️ सुधारित प्रिंट व अपडेट करा</strong>: बदललेली पावती प्रिंट होते.</li>
+<li><strong>💾 फक्त अपडेट सेव्ह करा</strong>: पावती न काढता थेट डेटाबेस अपडेट होतो.</li>
+<li><strong>रद्द करा (Cancel)</strong>: कोणताही बदल न करता मूळ बिलावर परत जाण्यासाठी.</li>
+</ol>
+<h3>C. बदल इतिहास / ऑडिट लॉग (Audit Log of Changes)</h3>
+<ul>
+<li>प्रत्येक बदलाची अचूक नोंद सिस्टीम ठेवते:<ul>
+<li>कोणता रकाना बदलला (उदा. <code>Qty</code> किंवा <code>Price</code>).</li>
+<li>आधी काय किंमत होती (Old Value).</li>
+<li>आता काय किंमत झाली (New Value).</li>
+<li>बदल केल्याची अचूक तारीख आणि वेळ.</li>
+</ul>
+</li>
+<li>बिलाच्या खाली <strong>&quot;📜 बदल इतिहास (Audit Trail) पहा&quot;</strong> बटणावर क्लिक करून संपूर्ण हिस्ट्री कधीही तपासता येते.</li>
+</ul>
+<hr>
+<h2>२.५ डेटाबेस स्टोरेज रचना (Supabase Architecture)</h2>
+<ul>
+<li><strong>टेबल नाव</strong>: <code>sksk_bills</code></li>
+<li><strong>प्रायमरी की</strong>: <code>customer_mobile</code> (१० आकडी मोबाईल नंबर, TEXT)</li>
+<li><strong>स्तंभ (Columns)</strong>:<ul>
+<li><code>customer_mobile</code> (TEXT, PRIMARY KEY): ग्राहकाचा १० अंकी मोबाईल नंबर.</li>
+<li><code>customer_name</code> (TEXT): ग्राहकाचे नाव.</li>
+<li><code>bills</code> (JSONB Array): त्या ग्राहकाच्या आजवरच्या सर्व बिलांचा संपूर्ण डेटा (उत्पादने, दर, तारखा, ऑडिट लॉग).</li>
+<li><code>updated_at</code> (TIMESTAMP): शेवटचा बदल केल्याचा दिनांक व वेळ.</li>
+</ul>
+</li>
+</ul>
+<hr>
+<h1>भाग ३: तांत्रिक समस्या व उपाय (Troubleshooting &amp; FAQs)</h1>
+<h3>प्र. १: मोबाईलवर माईक काम करत नाही किंवा आवाज ऐकू येत नाही?</h3>
+<p><strong>उत्तर:</strong></p>
+<ol>
+<li>मोबाईलच्या ब्राउझर सेटिंग्जमध्ये (Chrome Settings -&gt; Site Settings -&gt; Microphone) जाऊन वेबसाईटला माईकची परवानगी (Allowed) दिली आहे का ते तपासा.</li>
+<li>इंटरनेट कनेक्टिव्हिटी चालू असल्याची खात्री करा (Speech Recognition साठी आवश्यक).</li>
+</ol>
+<h3>प्र. २: इंटरनेट बंद असताना किंवा स्लो असताना बिल तयार होईल का?</h3>
+<p><strong>उत्तर:</strong></p>
+<ul>
+<li><strong>होय!</strong> प्रणालीमध्ये <strong>Offline LocalStorage Backup Engine</strong> बसवला आहे. इंटरनेट स्लो असल्यास किंवा बंद असल्यास बिल ब्राउझरच्या स्थानिक मेमरीमध्ये तात्काळ सेव्ह होते आणि PDF/प्रिंट सहज निघते. इंटरनेट पुन्हा सुरू झाल्यावर डेटा क्लाउडवर सिंक होतो.</li>
+</ul>
+<h3>प्र. ३: पावती प्रिंट करताना फॉन्ट किंवा कडा कापल्या जात असतील तर?</h3>
+<p><strong>उत्तर:</strong></p>
+<ol>
+<li>प्रिंटर डायलॉगमध्ये <strong>Paper Size = A4</strong> निवडा.</li>
+<li><strong>Margins = Default किंवा None</strong> ठेवा.</li>
+<li><strong>Options मध्ये &#39;Background graphics&#39;</strong> या पर्यायावर टिक करा, जेणेकरून रंग व लोगो स्पष्ट छापून येईल.</li>
+</ol>
+<h3>प्र. ४: AI कृषी मित्राचे उत्तर इंग्रजीत आले तर काय करावे?</h3>
+<p><strong>उत्तर:</strong></p>
+<ul>
+<li>AI ला थेट मराठीत विचारा किंवा उत्तराच्या खाली <em>&quot;मला मराठीत सांगा&quot;</em> असा रिप्लाय द्या; AI लगेच संपूर्ण उत्तर अस्खलित मराठीत भाषांतरित करेल.</li>
+</ul>
+<h3>प्र. ५: व्यवस्थापक पासवर्ड विसरल्यास काय करावे?</h3>
+<p><strong>उत्तर:</strong></p>
+<ul>
+<li>Supabase Authentication डॅशबोर्डमध्ये जाऊन ॲडमिन ईमेलसाठी <strong>&quot;Reset Password&quot;</strong> लिंक पाठवता येते.</li>
+</ul>
+<hr>
+<blockquote>
+<p>🌾 <strong>स्वराज कृषी सेवा केंद्र, कानमंडाळे (चांदवड)</strong><br><em>शेतकऱ्यांची प्रगती, हाच आमचा ध्यास!</em></p>
+</blockquote>
+
+  </div>
+
+  <div class="doc-footer">
+    स्वराज कृषी सेवा केंद्र • कानमंडाळे, चांदवड • सर्व हक्क राखीव © २०२६
+  </div>
+</body>
+</html>

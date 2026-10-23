@@ -26,6 +26,20 @@ npm run build
 
 `products.js` मधील static data बदलून API service तयार करता येईल. Supabase, Firebase किंवा दुसऱ्या free-tier backend कडून products fetch करून search/filter/detail pages तशाच ठेवता येतील.
 
+## Admin sign-in आणि dashboard cache
+
+Admin/Staff खात्यांसाठी Google Apps Script login API वापरला जातो. Apps Script मध्ये `src/utils/googleAppsScriptTemplate.js` मधील पूर्ण script deploy करा आणि **Deploy → Manage deployments → Edit → New version → Deploy** वापरून नवीन आवृत्ती प्रकाशित करा. वेब-अॅप URL बदलल्यास तो Admin → Google Sheets Integration मध्ये अद्ययावत करा. जुन्या deployment वर session endpoints उपलब्ध नसतील आणि login चुकीच्या password चा संदेश दाखवू शकतो.
+
+पहिल्या यशस्वी login वेळी script लपवलेली `Auth_Sessions` शीट तयार करतो. या शीटमध्ये फक्त session-token hash व password-fingerprint असतो; browser मध्ये पासवर्ड साठवला जात नाही. जुना local users/password cache app सुरू होताना काढून टाकला जातो. HMAC fingerprint साठी स्वतंत्र secret Apps Script Script Properties मध्ये तयार होतो. `Users` शीटमधील पासवर्ड बदलल्यास जुने sessions पुढील validation वेळी रद्द होतात (साधारण दोन मिनिटांच्या आत, किंवा tab पुन्हा उघडल्यावर). Logout केल्यास त्या device वरील session revoke होतो.
+
+**महत्त्वाचे:** नवीन script `getAll` आणि `getRecent` public actions मधून `Users` टॅब वाचण्यास नकार देतो. जुन्या deployed script मध्ये हा प्रतिबंध नसल्यास Web App URL असलेला कोणीही `Users` टॅबमधील password cells वाचू शकतो. नवीन आवृत्ती deploy केल्यानंतर सर्व Admin/Staff passwords बदला; जुन्या deployment ला सुरक्षित समजू नका.
+
+Dashboard प्रथम signed-in खात्याच्या device-local cache मधून लगेच दाखवतो आणि नंतर Google Sheets मधून refresh करतो. कॅशमध्ये dashboard साठी आवश्यक sales आणि customer-dues तपशील असतात. Logout केल्यावर त्या खात्याचा dashboard cache काढला जातो; dashboard मधील **कॅशे काढा** नियंत्रणही उपलब्ध आहे. Customer mobile-only login तात्पुरता आहे आणि तो reload नंतर कायम राहत नाही.
+
+Dashboard मधील cache काढण्याचा पर्याय फक्त analytics data हटवतो. Login cache/token browser storage मधून काढल्यास protected pages पुढील load वर login मागतील.
+
+`initTabs` ने नवीन Users शीट तयार केली असल्यास, deployment सार्वजनिक वापरासाठी देण्याआधी seeded admin/staff पासवर्ड बदलून घ्या.
+
 //update website in VS code
 git status
 git add .

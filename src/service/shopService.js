@@ -1,40 +1,13 @@
-import { supabase } from "../config/supabase";
-
-// =========================================================
-// GET SHOP INFORMATION
-// =========================================================
-//
-// This function gets the shop information from the
-// shop_settings table in Supabase.
-//
-// We expect only ONE shop record.
-//
-// =========================================================
+import ShopProp from "../config/shopProps";
+import { fetchGoogleSheetRecords } from "./googleSheetsService";
+import { normalizeShopSettingsRows } from "../utils/sheetData";
 
 export async function getShopSettings() {
-  const { data, error } = await supabase
-
-    .from("shop_settings")
-
-    .select("*")
-
-    .limit(1)
-
-    .single();
-
-  // =======================================================
-  // HANDLE DATABASE ERROR
-  // =======================================================
-
-  if (error) {
-    console.error("Error fetching shop settings:", error);
-
-    throw error;
+  try {
+    const rows = await fetchGoogleSheetRecords("Settings");
+    return normalizeShopSettingsRows(rows, ShopProp);
+  } catch (error) {
+    console.warn("Using bundled shop details because the Settings tab could not be read.", error);
+    return { ...ShopProp };
   }
-
-  // =======================================================
-  // RETURN SHOP INFORMATION
-  // =======================================================
-
-  return data;
 }

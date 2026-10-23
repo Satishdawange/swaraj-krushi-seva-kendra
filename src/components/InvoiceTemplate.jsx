@@ -13,9 +13,16 @@ const InvoiceTemplate = forwardRef(({ bill }, ref) => {
     billDate = new Date().toISOString().split('T')[0],
     items = [],
     totalAmount = 0,
+    paidAmount = null,
+    balanceAmount = null,
+    paymentStatus = 'Fully Paid',
     paymentMode = 'Cash',
     notes = ''
   } = bill;
+
+  const grandTotal = Number(totalAmount || 0);
+  const actualPaid = paidAmount !== null && paidAmount !== undefined ? Number(paidAmount) : (paymentStatus === 'Not Paid' ? 0 : grandTotal);
+  const actualBalance = balanceAmount !== null && balanceAmount !== undefined ? Number(balanceAmount) : Math.max(0, grandTotal - actualPaid);
 
   // Format date to DD/MM/YYYY
   const formattedDate = (() => {
@@ -295,24 +302,40 @@ const InvoiceTemplate = forwardRef(({ bill }, ref) => {
           <div style={{
             display: 'flex',
             justifyContent: 'space-between',
-            padding: '8px 12px',
+            padding: '6px 12px',
             background: '#ffffff',
             borderBottom: '1px solid #e1ede3'
           }}>
-            <span style={{ color: '#546b5a' }}>उप-एकूण (Subtotal):</span>
-            <strong>₹ {Number(totalAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+            <span style={{ color: '#546b5a' }}>एकूण रक्कम (Grand Total):</span>
+            <strong>₹ {grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
           </div>
           <div style={{
             display: 'flex',
             justifyContent: 'space-between',
-            padding: '10px 12px',
-            background: '#176b3a',
-            color: '#ffffff',
-            fontSize: '14px'
+            padding: '6px 12px',
+            background: '#ffffff',
+            borderBottom: '1px solid #e1ede3',
+            color: '#137333'
           }}>
-            <span style={{ fontWeight: '700' }}>एकूण रक्कम (Grand Total):</span>
-            <span style={{ fontWeight: '800', fontSize: '16px' }}>
-              ₹ {Number(totalAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            <span style={{ fontWeight: '600' }}>जमा रक्कम (Paid Amount):</span>
+            <strong style={{ fontWeight: '700' }}>₹ {actualPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+          </div>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            padding: '8px 12px',
+            background: actualBalance > 0 ? '#fff5f5' : '#176b3a',
+            color: actualBalance > 0 ? '#b42318' : '#ffffff',
+            fontSize: '13.5px',
+            borderTop: '1px solid #cce0d0'
+          }}>
+            <span style={{ fontWeight: '700' }}>
+              {actualBalance > 0 ? 'शिल्लक येणे बाकी (Balance Udhaari):' : 'पेमेंट स्थिती (Status):'}
+            </span>
+            <span style={{ fontWeight: '800', fontSize: '15px' }}>
+              {actualBalance > 0
+                ? `₹ ${actualBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
+                : 'पूर्ण भरणा (Fully Paid) ✓'}
             </span>
           </div>
         </div>

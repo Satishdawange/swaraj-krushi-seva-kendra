@@ -1,27 +1,37 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
-import Layout from './components/Layout';
+import AppShell from './components/AppShell';
 
-import Home from './pages/Home';
-import Products from './pages/Products';
-import ProductDetail from './pages/ProductDetail';
-import About from './pages/About';
-import Services from './pages/Services';
-import Contact from './pages/Contact';
-import ProductRequest from './pages/ProductRequest';
+// Public Pages
+const Home = lazy(() => import('./pages/Home'));
+const Products = lazy(() => import('./pages/Products'));
+const ProductDetail = lazy(() => import('./pages/ProductDetail'));
+const About = lazy(() => import('./pages/About'));
+const Services = lazy(() => import('./pages/Services'));
+const Contact = lazy(() => import('./pages/Contact'));
+const ProductRequest = lazy(() => import('./pages/ProductRequest'));
 
-// Admin & Billing Pages
-import AdminLogin from './pages/AdminLogin';
-import CreateBill from './pages/CreateBill';
-import BillHistory from './pages/BillHistory';
+// Login & Customer Portal
+const AdminLogin = lazy(() => import('./pages/AdminLogin'));
+const CustomerPortal = lazy(() => import('./pages/CustomerPortal'));
+
+// Admin, Billing, Inventory & Google Sheets
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const CreateBill = lazy(() => import('./pages/CreateBill'));
+const CreateChallan = lazy(() => import('./pages/CreateChallan'));
+const BillHistory = lazy(() => import('./pages/BillHistory'));
+const ChallanHistory = lazy(() => import('./pages/ChallanHistory'));
+const Inventory = lazy(() => import('./pages/Inventory'));
+const GoogleSheetsIntegration = lazy(() => import('./pages/GoogleSheetsIntegration'));
 
 export default function App() {
   return (
     <AuthProvider>
-      <Layout>
+      <AppShell>
+        <Suspense fallback={<div className="page-loading" role="status" style={{ textAlign: 'center', padding: '60px 20px', color: '#176b3a', fontSize: '16px' }}>⏳ लोड होत आहे…</div>}>
         <Routes>
           {/* Public Website Routes */}
           <Route path="/" element={<Home />} />
@@ -32,14 +42,32 @@ export default function App() {
           <Route path="/services" element={<Services />} />
           <Route path="/contact" element={<Contact />} />
 
-          {/* Admin Login */}
+          {/* Unified Login */}
           <Route path="/admin/login" element={<AdminLogin />} />
+
+          {/* Customer / Farmer Portal */}
+          <Route
+            path="/customer/portal"
+            element={
+              <ProtectedRoute allowedRoles={['customer', 'admin', 'staff']}>
+                <CustomerPortal />
+              </ProtectedRoute>
+            }
+          />
 
           {/* Protected Admin Routes */}
           <Route
+            path="/admin/dashboard"
+            element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <AdminDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/admin/billing"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={['admin', 'staff']}>
                 <CreateBill />
               </ProtectedRoute>
             }
@@ -47,16 +75,49 @@ export default function App() {
           <Route
             path="/admin/bills"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={['admin', 'staff']}>
                 <BillHistory />
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/admin/challan/create"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'staff']}>
+                <CreateChallan />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/challans"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'staff']}>
+                <ChallanHistory />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/inventory"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'staff']}>
+                <Inventory />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/sheets"
+            element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <GoogleSheetsIntegration />
+              </ProtectedRoute>
+            }
+          />
 
-          {/* Fallback route */}
+          {/* Fallback */}
           <Route path="*" element={<Home />} />
         </Routes>
-      </Layout>
+        </Suspense>
+      </AppShell>
     </AuthProvider>
   );
 }
