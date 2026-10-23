@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 import {
   Link,
@@ -14,7 +14,8 @@ import {
   Sprout
 } from '../components/Icons';
 
-import { products } from '../data/products';
+import { products as fallbackProducts } from '../data/products';
+import { getProductById } from '../service/productService';
 
 import ShopProp from '../config/shopProps';
 
@@ -23,12 +24,13 @@ import ShopProp from '../config/shopProps';
 export default function ProductDetail() {
 
   const { id } = useParams();
+  const [p, setProduct] = useState(() => fallbackProducts.find((x) => String(x.id) === String(id)) || null);
 
-
-  // Find selected product
-  const p = products.find(
-    (x) => String(x.id) === String(id)
-  );
+  useEffect(() => {
+    let active = true;
+    getProductById(id).then((item) => { if (active && item) setProduct(item); }).catch(() => {});
+    return () => { active = false; };
+  }, [id]);
 
 
   // Product not found

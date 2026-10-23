@@ -1,9 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { askAgriAdvisor, detectCrop } from '../service/aiAgriService';
+import {
+  askAgriAdvisor,
+  getOpenAIKey,
+  getSelectedAiModel
+} from '../service/aiAgriService';
 import ShopProp from '../config/shopProps';
 import '../CSS/aiAdvisor.css';
-
-const SESSION_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes inactivity timeout
 
 // Formats plain text, converts any **bold** into <strong>, cleans stray asterisks, and renders clean paragraphs
 function FormattedAiText({ text }) {
@@ -46,75 +48,65 @@ export default function AiAgriAdvisor() {
     {
       id: 1,
       sender: 'bot',
-      text: `🌱 राम राम शेतकरी मित्रांनो! 🙏\n\nमी स्वराज कृषी सेवा केंद्राचा अधिकृत AI कृषी मित्र आहे.\nआपल्या पिकावरील रोग, अळी, किंवा खत व्यवस्थापनाविषयी थेट विचारा.\n\n• पिकाचा प्रश्न टाईप करा, बोला (🎙️) किंवा फोटो (📷) पाठवा.\n• आम्ही सर्व औषधे घरपोच डिलिव्हरी (Home Delivery) देखील करतो!\n\n💡 तुम्ही आधीच स्वराज कृषी सेवा केंद्रातून औषध खरेदी केले आहे का?\nवापर कसा करावा किंवा पाण्याचे प्रमाण आठवत नसेल तर खाली तुमचा १०-अंकी मोबाईल नंबर किंवा औषधाचे नाव टाका — मी पाण्याचे प्रमाण व डोस लगेच समजावून सांगेन!`,
+      text: `🌱 राम राम शेतकरी मित्रांनो! 🙏\n\nमी स्वराज कृषी सेवा केंद्राचा अधिकृत AI कृषी मित्र आहे (ChatGPT Powered).\nआपल्या पिकावरील रोग, अळी, किंवा खत व्यवस्थापनाविषयी थेट विचारा.\n\n• पिकाचा प्रश्न टाईप करा, बोला (🎙️) किंवा फोटो (📷) पाठवा.\n• आम्ही सर्व औषधे घरपोच डिलिव्हरी (Home Delivery) देखील करतो!\n\n💡 तुम्ही आधीच स्वराज कृषी सेवा केंद्रातून औषध खरेदी केले आहे का?\nवापर कसा करावा किंवा पाण्याचे प्रमाण आठवत नसेल तर खाली तुमचा १०-अंकी मोबाईल नंबर टाका — मी खरेदीचे बिल व डोस लगेच समजावून सांगेन!`,
       image: null
     }
   ]);
 
-  // Session context to maintain conversation continuity for 2 minutes
-  const [sessionContext, setSessionContext] = useState({
-    activeCrop: null,
-    lastActivityTime: Date.now(),
-    history: []
-  });
-
   const [inputText, setInputText] = useState('');
   const [isThinking, setIsThinking] = useState(false);
-  const [selectedImage, setSelectedImage] = useState(null); // { base64, mimeType, dataUrl }
+  const [selectedImage, setSelectedImage] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
 
-  const messagesEndRef = useRef(null);
+  const openAiKey = getOpenAIKey();
+  const selectedModel = getSelectedAiModel();
+
+  const messagesContainerRef = useRef(null);
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
+  const hasMountedMessagesRef = useRef(false);
 
-  // Auto scroll to latest message
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    }
   };
 
   useEffect(() => {
+    if (!hasMountedMessagesRef.current) {
+      hasMountedMessagesRef.current = true;
+      return;
+    }
     scrollToBottom();
   }, [messages, isThinking]);
 
-  // Setup Web Speech API for voice input
+  // Speech Recognition setup
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
       recognition.continuous = false;
       recognition.interimResults = false;
-      recognition.lang = 'mr-IN'; // Defaults to Marathi (can also understand Hindi / English)
+      recognition.lang = 'mr-IN';
 
-      recognition.onstart = () => {
-        setIsRecording(true);
-      };
-
+      recognition.onstart = () => setIsRecording(true);
       recognition.onresult = (event) => {
         const transcript = event.results[0][0].transcript;
         setInputText((prev) => (prev ? `${prev} ${transcript}` : transcript));
         setIsRecording(false);
       };
-
-      recognition.onerror = (event) => {
-        console.warn('Speech recognition error:', event.error);
-        setIsRecording(false);
-      };
-
-      recognition.onend = () => {
-        setIsRecording(false);
-      };
-
+      recognition.onerror = () => setIsRecording(false);
+      recognition.onend = () => setIsRecording(false);
       recognitionRef.current = recognition;
     }
   }, []);
 
-  // Toggle Voice Recording
   const handleToggleVoice = () => {
     if (!recognitionRef.current) {
-      alert('तुमच्या ब्राउझरमध्ये व्हॉइस रेकॉर्डिंग सपोर्ट उपलब्ध नाही. कृपया गुगल क्रोम वापरा किंवा मजकूर टाईप करा.');
+      alert('ब्राउझरमध्ये व्हॉइस इनपुट उपलब्ध नाही. कृपया गुगल क्रोम वापरा किंवा मजकूर टाईप करा.');
       return;
     }
-
     if (isRecording) {
       recognitionRef.current.stop();
     } else {
@@ -126,31 +118,23 @@ export default function AiAgriAdvisor() {
     }
   };
 
-  // Handle Image Upload
   const handleImageSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    // Check size limit (max 4MB)
     if (file.size > 4 * 1024 * 1024) {
-      alert('कृपया ४ MB पेक्षा लहान आकाराचा फोटो निवडा.');
+      alert('कृपया ४ MB पेक्षा लहान फोटो निवडा.');
       return;
     }
-
     const reader = new FileReader();
     reader.onload = () => {
-      const dataUrl = reader.result;
-      const base64 = dataUrl.split(',')[1];
       setSelectedImage({
-        dataUrl,
-        base64,
+        dataUrl: reader.result,
         mimeType: file.type || 'image/jpeg'
       });
     };
     reader.readAsDataURL(file);
   };
 
-  // Submit Query
   const handleSendMessage = async (customText = null) => {
     const query = (customText || inputText).trim();
     if (!query && !selectedImage) return;
@@ -158,40 +142,27 @@ export default function AiAgriAdvisor() {
     const userMessage = {
       id: Date.now(),
       sender: 'user',
-      text: query || '📷 (पिकाचा फोटो विश्लेषणासाठी पाठवला आहे)',
+      text: query || '📷 (पिकाचा फोटो पाठवला आहे)',
       image: selectedImage?.dataUrl || null
     };
 
     setMessages((prev) => [...prev, userMessage]);
     setInputText('');
-    const imageToSend = selectedImage;
     setSelectedImage(null);
     setIsThinking(true);
 
-    // 2-minute Session Inactivity Check
-    const now = Date.now();
-    const isSessionExpired = now - sessionContext.lastActivityTime > SESSION_TIMEOUT_MS;
-
-    let activeCrop = isSessionExpired ? null : sessionContext.activeCrop;
-    let historyToPass = isSessionExpired ? [] : sessionContext.history;
-
-    const detected = detectCrop(query);
-    if (detected) {
-      activeCrop = detected;
-    }
-
-    const contextToSend = {
-      activeCrop,
-      isFollowUp: !detected && !!activeCrop
-    };
-
     try {
+      // Build conversation history
+      const history = messages.slice(-6).map((m) => ({
+        sender: m.sender,
+        text: m.text,
+        image: m.image
+      }));
+
       const reply = await askAgriAdvisor(
-        query || 'कृपया या फोटोतील पिकाची पाहणी करून कीड, रोग आणि त्यावर स्वराज कृषी सेवा केंद्रातील योग्य उपाय सांगा.',
-        imageToSend?.base64,
-        imageToSend?.mimeType,
-        contextToSend,
-        historyToPass
+        query || 'कृपया या फोटोतील पिकाची पाहणी करून कीड, रोग आणि त्यावर योग्य उपाय सांगा.',
+        history,
+        { model: selectedModel, image: selectedImage }
       );
 
       const botMessage = {
@@ -203,18 +174,6 @@ export default function AiAgriAdvisor() {
       };
 
       setMessages((prev) => [...prev, botMessage]);
-
-      // Update session context with current crop & latest activity time
-      const resolvedCrop = detected || activeCrop || detectCrop(reply);
-      setSessionContext({
-        activeCrop: resolvedCrop,
-        lastActivityTime: Date.now(),
-        history: [
-          ...historyToPass,
-          { sender: 'user', text: query || '📷 (पिकाचा फोटो)' },
-          { sender: 'bot', text: reply }
-        ].slice(-6)
-      });
     } catch (err) {
       console.error('Advisor error:', err);
       setMessages((prev) => [
@@ -222,7 +181,7 @@ export default function AiAgriAdvisor() {
         {
           id: Date.now() + 1,
           sender: 'bot',
-          text: 'माफ करा, तांत्रिक समस्येमुळे उत्तर मिळण्यात अडचण आली. कृपया पुन्हा प्रयत्न करा किंवा थेट निलेश दवंगे (+91 8459568940) यांच्याशी संपर्क साधा.'
+          text: `AI response failed: ${err.message || 'Please try again.'}`
         }
       ]);
     } finally {
@@ -230,40 +189,52 @@ export default function AiAgriAdvisor() {
     }
   };
 
-  // Quick Suggestion Chips
-  const suggestions = [
-    '🍅 टोमॅटो अळी व कीड उपाय',
-    '🍇 द्राक्ष बाग रोग उपाय',
-    '🧅 कांदा करपा व थ्रिप्स',
-    '🚚 घरपोच डिलिव्हरी (Home Delivery)',
-    '📱 खरेदी केलेल्या औषधाचा वापर'
+  // Optional prompts help users get started without limiting the questions they can ask.
+  const getSuggestions = () => [
+    'How can I improve soil health?',
+    'Help me identify a crop problem',
+    'Explain drip irrigation basics',
+    'What should I know before spraying?'
   ];
+  const suggestions = getSuggestions();
+  const aiProviderLabel = openAiKey
+    ? `OpenAI (${selectedModel})`
+    : import.meta.env.VITE_GEMINI_API_KEY
+      ? 'Gemini'
+      : 'API key needed';
+  const aiIsConfigured = Boolean(openAiKey || import.meta.env.VITE_GEMINI_API_KEY);
 
   return (
-    <div className="ai-advisor-card">
+    <div className="ai-advisor-card" style={{ position: 'relative' }}>
       {/* Top Header */}
       <div className="ai-advisor-header">
         <div className="ai-advisor-title-group">
-          <div className="ai-avatar-badge">
-            🌱
-          </div>
+          <div className="ai-avatar-badge">🌱</div>
           <div className="ai-title-text">
-            <h3>
-              AI कृषी मित्र (Agri Advisor)
-            </h3>
-            <p>
-              पिकांवरील रोग, खते व औषधांबद्दल थेट विचारा
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <h3 style={{ margin: 0, fontSize: '16px' }}>AI कृषी मित्र (ChatGPT)</h3>
+              <span style={{
+                background: aiIsConfigured ? '#e6f4ea' : '#fef7e0',
+                color: aiIsConfigured ? '#137333' : '#b06000',
+                fontSize: '10px',
+                fontWeight: '700',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                border: aiIsConfigured ? '1px solid #ceead6' : '1px solid #feefc3'
+              }}>
+                {aiProviderLabel}
+              </span>
+            </div>
+            <p style={{ margin: 0, fontSize: '12px', color: '#5f6368' }}>
+              पिकांवरील रोग, खते व औषधांबद्दल अचूक सल्ला
             </p>
           </div>
         </div>
 
-        <span className="ai-lang-pill">
-          मराठी • हिंदी • Eng
-        </span>
       </div>
 
       {/* Messages Stream */}
-      <div className="ai-messages-container">
+      <div className="ai-messages-container" ref={messagesContainerRef}>
         {messages.map((m) => (
           <div key={m.id} className={`ai-bubble ${m.sender}`}>
             {m.image && (
@@ -300,7 +271,6 @@ export default function AiAgriAdvisor() {
           </div>
         )}
 
-        <div ref={messagesEndRef} />
       </div>
 
       {/* Suggestion Chips */}
@@ -344,7 +314,6 @@ export default function AiAgriAdvisor() {
           handleSendMessage();
         }}
       >
-        {/* Hidden File Input for Image/Camera */}
         <input
           ref={fileInputRef}
           type="file"
@@ -354,17 +323,15 @@ export default function AiAgriAdvisor() {
           onChange={handleImageSelect}
         />
 
-        {/* Image Attachment Button */}
         <button
           type="button"
           className="btn-ai-icon"
           onClick={() => fileInputRef.current?.click()}
-          title="पिकाचा किंवा पानावरील रोगाचा फोटो पाठवा"
+          title="पिकाचा फोटो पाठवा"
         >
           📷
         </button>
 
-        {/* Audio Mic Button */}
         <button
           type="button"
           className={`btn-ai-icon ${isRecording ? 'recording' : ''}`}
@@ -374,7 +341,6 @@ export default function AiAgriAdvisor() {
           {isRecording ? '🛑' : '🎙️'}
         </button>
 
-        {/* Text Input */}
         <input
           type="text"
           className="ai-input-text"
@@ -384,7 +350,6 @@ export default function AiAgriAdvisor() {
           disabled={isThinking}
         />
 
-        {/* Send Button */}
         <button
           type="submit"
           className="btn-ai-send"

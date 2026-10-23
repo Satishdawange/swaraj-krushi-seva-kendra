@@ -10,6 +10,7 @@ import {
   cleanMobileNumber,
   numberToMarathiWords
 } from '../service/billingService';
+import { fetchRecentRecords } from '../service/googleSheetsService';
 import '../CSS/billing.css';
 
 export default function BillHistory() {
@@ -17,6 +18,10 @@ export default function BillHistory() {
   const [customerRows, setCustomerRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'PAID' | 'UDHAARI'
 
   // Selected Bill & Viewer State
   const [activeBill, setActiveBill] = useState(null);
@@ -40,12 +45,28 @@ export default function BillHistory() {
 
   const historyInvoiceRef = useRef(null);
 
-  const loadData = async () => {
+  const loadData = async (pageNum = currentPage) => {
     setLoading(true);
     try {
-      const { allBills, customerRows: rows } = await getAllCustomerBills();
-      setBills(allBills || []);
-      setCustomerRows(rows || []);
+      // 1. Fetch paginated recent 10 bills from Google Sheets / Local DB
+      const res = await fetchRecentRecords('Bills', {
+        page: pageNum,
+        limit: 10,
+        search: searchQuery
+      });
+
+      let items = res.items || [];
+      // Also merge with any Supabase customer rows if local is empty
+      if (items.length === 0) {
+        const { allBills, customerRows: rows } = await getAllCustomerBills();
+        items = allBills || [];
+        setCustomerRows(rows || []);
+      }
+
+      setBills(items);
+      setTotalPages(res.totalPages || 1);
+      setTotalCount(res.total || items.length);
+      setCurrentPage(res.page || pageNum);
     } catch (err) {
       console.error('Error fetching bills history:', err);
     } finally {
@@ -54,18 +75,28 @@ export default function BillHistory() {
   };
 
   useEffect(() => {
-    loadData();
-  }, []);
+    loadData(1);
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter]);
 
-  // Filter bills
+  useEffect(() => {
+    loadData(currentPage);
+  }, [currentPage]);
+
+  // Filter bills by status
   const filteredBills = bills.filter((b) => {
     const q = searchQuery.toLowerCase().trim();
-    if (!q) return true;
-    return (
-      (b.customerName || '').toLowerCase().includes(q) ||
-      (b.customerMobile || '').includes(q) ||
-      (b.billNo || '').toLowerCase().includes(q)
+    const matchesSearch = !q || (
+      (b.customerName || b.Customer_Name || '').toLowerCase().includes(q) ||
+      (b.customerMobile || b.Mobile || '').includes(q) ||
+      (b.billNo || b.Bill_No || '').toLowerCase().includes(q)
     );
+    if (!matchesSearch) return false;
+
+    const bal = Number(b.balanceAmount || b.Balance_Amount || 0);
+    if (statusFilter === 'PAID') return bal === 0;
+    if (statusFilter === 'UDHAARI') return bal > 0;
+    return true;
   });
 
   // Open Bill in View Mode
@@ -335,7 +366,7 @@ export default function BillHistory() {
       ) : (
         <>
           <div className="table-scroll-hint">
-            👉 डावीकडे सरकवून सर्व माहिती (तारीख, ग्राहक, रक्कम, बिल) पहा
+            👉 डावीकडे सरकवून सर्व माहिती (तारीख, ग्राहक, रक्कम, बिल, WhatsApp) पहा
           </div>
           <div className="bill-table-wrapper">
             <table className="bill-table">
@@ -346,77 +377,159 @@ export default function BillHistory() {
                 <th>ग्राहकाचे नाव</th>
                 <th>मोबाईल नंबर</th>
                 <th style={{ textAlign: 'right' }}>एकूण रक्कम (₹)</th>
-                <th style={{ textAlign: 'center' }}>कृती (Action)</th>
+                <th>पेमेंट स्थिती</th>
+                <th style={{ textAlign: 'center' }}>कृती (Actions)</th>
               </tr>
             </thead>
             <tbody>
-              {filteredBills.map((bill, index) => (
-                <tr key={bill.billNo || index}>
-                  <td>
-                    <strong style={{ color: '#176b3a', fontSize: '12.5px' }}>{bill.billNo}</strong>
-                    {bill.updatedAt && (
-                      <div style={{ display: 'flex', gap: '4px', alignItems: 'center', marginTop: '2px' }}>
-                        <span style={{ fontSize: '10px', color: '#dc2626', fontWeight: '600' }}>
-                          ● संपादित
-                        </span>
-                        {bill.editHistory && bill.editHistory.length > 0 && (
-                          <span style={{
-                            background: '#fef3c7',
-                            color: '#92400e',
-                            fontSize: '9.5px',
-                            padding: '1px 5px',
-                            borderRadius: '4px',
-                            fontWeight: '700'
-                          }}>
-                            📜 {bill.editHistory.length} बदल
+              {filteredBills.map((bill, index) => {
+                const total = Number(bill.totalAmount || bill.Total_Amount || 0);
+                const paid = Number(bill.paidAmount || bill.Paid_Amount || (bill.paymentStatus === 'Not Paid' ? 0 : total));
+                const bal = Number(bill.balanceAmount || bill.Balance_Amount || Math.max(0, total - paid));
+                const status = bill.paymentStatus || bill.Payment_Status || (bal === 0 ? 'Fully Paid' : (paid > 0 ? 'Half Paid' : 'Not Paid'));
+                const cMobile = cleanMobileNumber(bill.customerMobile || bill.Mobile);
+
+                return (
+                  <tr key={bill.billNo || index}>
+                    <td>
+                      <strong style={{ color: '#176b3a', fontSize: '12.5px' }}>{bill.billNo || bill.Bill_No}</strong>
+                      {bill.updatedAt && (
+                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center', marginTop: '2px' }}>
+                          <span style={{ fontSize: '10px', color: '#dc2626', fontWeight: '600' }}>
+                            ● संपादित
                           </span>
-                        )}
-                      </div>
-                    )}
-                  </td>
-                  <td style={{ fontSize: '13px' }}>{bill.billDate}</td>
-                  <td style={{ fontWeight: '600' }}>{bill.customerName}</td>
-                  <td>
-                    <span style={{
-                      background: '#f2f7f3',
-                      color: '#1a482b',
-                      padding: '3px 8px',
-                      borderRadius: '6px',
-                      fontWeight: '700',
-                      fontSize: '13px'
-                    }}>
-                      {bill.customerMobile}
-                    </span>
-                  </td>
-                  <td style={{ textAlign: 'right', fontWeight: '700', color: '#176b3a' }}>
-                    ₹ {Number(bill.totalAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                  </td>
-                  <td style={{ textAlign: 'center' }}>
-                    <button
-                      type="button"
-                      onClick={() => handleOpenBill(bill)}
-                      style={{
-                        background: '#176b3a',
-                        color: '#ffffff',
-                        border: 'none',
-                        padding: '7px 14px',
-                        borderRadius: '8px',
-                        fontSize: '12.5px',
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ fontSize: '13px' }}>{bill.billDate || bill.Date}</td>
+                    <td style={{ fontWeight: '600' }}>{bill.customerName || bill.Customer_Name}</td>
+                    <td>
+                      <span style={{
+                        background: '#f2f7f3',
+                        color: '#1a482b',
+                        padding: '3px 8px',
+                        borderRadius: '6px',
                         fontWeight: '700',
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        boxShadow: '0 4px 12px rgba(23, 107, 58, 0.2)'
-                      }}
-                    >
-                      👁️ बिल उघडा
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                        fontSize: '13px'
+                      }}>
+                        {cMobile}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'right', fontWeight: '700', color: '#176b3a' }}>
+                      ₹ {total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    </td>
+                    <td>
+                      <span style={{
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        fontSize: '11px',
+                        fontWeight: '700',
+                        background: status === 'Fully Paid' ? '#e6f4ea' : (status === 'Half Paid' ? '#fef7e0' : '#fce8e6'),
+                        color: status === 'Fully Paid' ? '#137333' : (status === 'Half Paid' ? '#b06000' : '#c5221f')
+                      }}>
+                        {status === 'Fully Paid' ? '✓ पूर्ण भरणा' : (status === 'Half Paid' ? `बाकी ₹${bal}` : 'उधारी')}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenBill(bill)}
+                          style={{
+                            background: '#176b3a',
+                            color: '#ffffff',
+                            border: 'none',
+                            padding: '6px 12px',
+                            borderRadius: '6px',
+                            fontSize: '12px',
+                            fontWeight: '700',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          👁️ पहा
+                        </button>
+                        <a
+                          href={`https://wa.me/91${cMobile}?text=${encodeURIComponent(
+                            `नमस्कार ${bill.customerName || bill.Customer_Name} जी, स्वराज कृषी सेवा केंद्र कानमंडाळे कडून आपले बिल क्र. ${bill.billNo || bill.Bill_No}:\nएकूण: ₹${total}\nजमा: ₹${paid}\nबाकी उधारी: ₹${bal}\nधन्यवाद! - निलेश दवंगे (8459568940)`
+                          )}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            background: '#25D366',
+                            color: '#fff',
+                            padding: '6px 10px',
+                            borderRadius: '6px',
+                            fontSize: '11px',
+                            fontWeight: '700',
+                            textDecoration: 'none',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                        >
+                          💬 WhatsApp
+                        </a>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
+        </div>
+
+        {/* Pagination Bar - Always 10 per page */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '14px 18px',
+          background: '#fafbfa',
+          border: '1px solid #dce8de',
+          borderRadius: '12px',
+          marginTop: '12px',
+          fontSize: '12.5px',
+          color: '#556b5c'
+        }}>
+          <div>
+            एकूण बिले: <strong>{totalCount}</strong> (पान <strong>{currentPage}</strong> / {totalPages})
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              type="button"
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              style={{
+                background: currentPage <= 1 ? '#eee' : '#176b3a',
+                color: currentPage <= 1 ? '#999' : '#fff',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '6px 14px',
+                cursor: currentPage <= 1 ? 'not-allowed' : 'pointer',
+                fontWeight: '600',
+                fontSize: '12px'
+              }}
+            >
+              ◀ मागील १०
+            </button>
+            <button
+              type="button"
+              disabled={currentPage >= totalPages}
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              style={{
+                background: currentPage >= totalPages ? '#eee' : '#176b3a',
+                color: currentPage >= totalPages ? '#999' : '#fff',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '6px 14px',
+                cursor: currentPage >= totalPages ? 'not-allowed' : 'pointer',
+                fontWeight: '600',
+                fontSize: '12px'
+              }}
+            >
+              पुढील १० ▶
+            </button>
+          </div>
         </div>
       </>
     )}

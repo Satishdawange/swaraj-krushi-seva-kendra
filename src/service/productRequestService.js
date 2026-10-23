@@ -1,37 +1,9 @@
-import { supabase } from "../config/supabase";
+import { sendGoogleSheetsAction } from "./googleSheetsService";
 
-// =========================================================
-// SUBMIT PRODUCT REQUEST
-// =========================================================
-
-export async function createProductRequest({
-  productName,
-
-  shortDescription,
-
-  usageDescription,
-}) {
-  const { data, error } = await supabase
-
-    .from("product_requests")
-
-    .insert({
-      product_name: productName || null,
-
-      short_description: shortDescription || null,
-
-      usage_description: usageDescription,
-    })
-
-    .select()
-
-    .single();
-
-  if (error) {
-    console.error("Product request error:", error);
-
-    throw error;
-  }
-
-  return data;
+export async function createProductRequest({ productName, shortDescription, usageDescription }) {
+  return sendGoogleSheetsAction("submitProductRequest", {
+    productName: productName || "",
+    shortDescription: shortDescription || "",
+    usageDescription: usageDescription || "",
+  });
 }

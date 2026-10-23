@@ -2,8 +2,8 @@ import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-export default function ProtectedRoute({ children }) {
-  const { isAdmin, loading } = useAuth();
+export default function ProtectedRoute({ children, allowedRoles = ['admin', 'staff'] }) {
+  const { user, isAuthenticated, role, loading } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -25,7 +25,7 @@ export default function ProtectedRoute({ children }) {
           animation: 'spin 1s linear infinite'
         }} />
         <p style={{ color: '#66736b', fontSize: '15px', fontWeight: '500' }}>
-          सुरक्षित पडताळणी सुरू आहे... (Verifying admin access...)
+          सुरक्षित पडताळणी सुरू आहे... (Verifying access...)
         </p>
         <style>{`
           @keyframes spin {
@@ -37,8 +37,15 @@ export default function ProtectedRoute({ children }) {
     );
   }
 
-  if (!isAdmin) {
-    // Redirect unauthenticated user to admin login
+  if (!isAuthenticated) {
+    return <Navigate to="/admin/login" state={{ from: location }} replace />;
+  }
+
+  // Check role authorization
+  if (allowedRoles && allowedRoles.length > 0 && !allowedRoles.includes(role)) {
+    if (role === 'customer') {
+      return <Navigate to="/customer/portal" replace />;
+    }
     return <Navigate to="/admin/login" state={{ from: location }} replace />;
   }
 

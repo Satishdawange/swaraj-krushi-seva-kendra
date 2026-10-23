@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "node node_modules/vite/bin/vite.js build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node tests/sheetData.test.js",
+    "export-pdf": "node export_pdf.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
@@ -16,5 +18,8 @@
     "react-dom": "latest",
     "react-router-dom": "latest",
     "vite": "latest"
+  },
+  "devDependencies": {
+    "marked": "^18.0.14"
   }
 }
