@@ -45,6 +45,7 @@ const TABS = {
   PRODUCT_REQUESTS: 'Product_Requests',
   AUTH_SESSIONS: 'Auth_Sessions'
 };
+const API_VERSION = 'sksk-customer-portal-v9';
 
 function doGet(e) {
   return handleRequest(e);
@@ -84,6 +85,7 @@ function handleRequest(e) {
         result = {
           success: true,
           message: 'Swaraj KSK Google Sheets API is Online',
+          apiVersion: API_VERSION,
           timestamp: new Date().toISOString(),
           sheetName: ss.getName()
         };
@@ -94,15 +96,52 @@ function handleRequest(e) {
         break;
         
       case 'getStats':
-        result = getStats(ss);
+        result = requireStaffOrAdmin(ss, params.token).success
+          ? getStats(ss)
+          : requireStaffOrAdmin(ss, params.token);
         break;
         
       case 'getRecent':
-        result = getRecentPaginated(ss, params.sheetName || TABS.BILLS, parseInt(params.page || 1), parseInt(params.limit || 10), params.search || '', params.category || '');
+        const recentSheet = params.sheetName || TABS.BILLS;
+        const recentSession = validateAuthSession(ss, params.token);
+        const recentUser = recentSession.valid ? recentSession.user : null;
+        const recentIsAdmin = recentUser?.role === 'admin';
+        const recentIsStaff = recentUser?.role === 'staff';
+        const recentNeedsStaff = ['Bills', 'Customers', 'Purchase_Lots', 'Challans', 'Stats', 'Inventory'].includes(recentSheet);
+        if (recentNeedsStaff && !recentIsAdmin && !recentIsStaff) {
+          result = { success: false, error: 'Sign in is required to access these records.' };
+        } else {
+          result = getRecentPaginated(ss, recentSheet, parseInt(params.page || 1), parseInt(params.limit || 10), params.search || '', params.category || '');
+          if (result.success && recentSheet === TABS.INVENTORY && !recentIsAdmin) {
+            result.data = result.data.map(recentIsStaff ? inventoryWithoutPricingRecord : publicInventoryRecord);
+          }
+          if (result.success && recentSheet === TABS.PRODUCTS && !recentIsAdmin) {
+            result.data = result.data.map(publicProductRecord);
+          }
+        }
+        break;
+
+      case 'getMyBills':
+        result = getBillsForCustomer(ss, params.token);
         break;
         
       case 'getAll':
-        result = getAllRecords(ss, params.sheetName || TABS.INVENTORY);
+        const allSheet = params.sheetName || TABS.INVENTORY;
+        const allSession = validateAuthSession(ss, params.token);
+        const allUser = allSession.valid ? allSession.user : null;
+        const allIsAdmin = allUser?.role === 'admin';
+        const allIsStaff = allUser?.role === 'staff';
+        if (['Bills', 'Customers', 'Purchase_Lots', 'Challans', 'Stats'].includes(allSheet) && !allIsAdmin && !allIsStaff) {
+          result = { success: false, error: 'Sign in is required to access these records.' };
+        } else {
+          result = getAllRecords(ss, allSheet);
+          if (result.success && allSheet === TABS.INVENTORY && !allIsAdmin) {
+            result.data = result.data.map(allIsStaff ? inventoryWithoutPricingRecord : publicInventoryRecord);
+          }
+          if (result.success && allSheet === TABS.PRODUCTS && !allIsAdmin) {
+            result.data = result.data.map(publicProductRecord);
+          }
+        }
         break;
         
       case 'saveBill':
@@ -140,6 +179,10 @@ function handleRequest(e) {
       case 'logout':
         result = revokeAuthSession(ss, params.token);
         break;
+
+      case 'changePassword':
+        result = changeUserPassword(ss, params.token, params.currentPassword, params.newPassword);
+        break;
         
       case 'syncAll':
         result = bulkSyncData(ss, params.data);
@@ -167,9 +210,9 @@ function handleRequest(e) {
 function initAllTabs(ss) {
   const schema = {
     [TABS.STATS]: ['Metric_Key', 'Metric_Name', 'Value', 'Last_Updated'],
-    [TABS.INVENTORY]: ['ID', 'Name', 'Category', 'Subcategory', 'Company', 'Unit', 'Purchase_Price', 'Selling_Price', 'Available_Stock', 'Min_Alert_Qty', 'Updated_At', 'Product_ID', 'Name_EN', 'Category_EN', 'Company_EN'],
-    [TABS.PURCHASES]: ['Lot_ID', 'Date', 'Supplier', 'Category', 'Product_Name', 'Bulk_Qty', 'Unit', 'Total_Cost', 'Unit_Cost', 'Selling_Price', 'Notes'],
-    [TABS.BILLS]: ['Bill_No', 'Date', 'Customer_Name', 'Mobile', 'Address', 'Total_Amount', 'Paid_Amount', 'Balance_Amount', 'Payment_Status', 'Payment_Mode', 'Items_JSON', 'Notes', 'Created_At'],
+    [TABS.INVENTORY]: ['ID', 'Name', 'Category', 'Subcategory', 'Company', 'Unit', 'Pack', 'Purchase_Price', 'Selling_Price', 'Available_Stock', 'Min_Alert_Qty', 'Updated_At', 'Product_ID', 'Name_EN', 'Category_EN', 'Company_EN', 'Badge_MR', 'Image_URL', 'Short_MR', 'Description_MR', 'Usage_MR', 'Crops_MR', 'Is_Active'],
+    [TABS.PURCHASES]: ['Lot_ID', 'Date', 'Supplier', 'Category', 'Product_Name', 'Product_Name_EN', 'Bulk_Qty', 'Unit', 'Total_Cost', 'Unit_Cost', 'Selling_Price', 'Notes'],
+    [TABS.BILLS]: ['Bill_No', 'Billbook_Bill_No', 'Date', 'Customer_Name', 'Mobile', 'Address', 'Total_Amount', 'Paid_Amount', 'Balance_Amount', 'Payment_Status', 'Payment_Mode', 'Items_JSON', 'Notes', 'Created_At'],
     [TABS.CHALLANS]: ['Challan_No', 'Date', 'Customer_Name', 'Mobile', 'Address', 'Vehicle_No', 'Driver_Name', 'Status', 'Items_JSON', 'Remarks', 'Converted_To_Bill'],
     [TABS.CUSTOMERS]: ['Mobile', 'Customer_Name', 'Address', 'Total_Bills', 'Total_Purchased', 'Total_Paid', 'Balance_Udhaari', 'Last_Visit'],
     [TABS.USERS]: ['ID', 'Username', 'Password', 'Role', 'Full_Name', 'Mobile', 'Created_At'],
@@ -191,6 +234,9 @@ function initAllTabs(ss) {
       sheet.setFrozenRows(1);
     }
   }
+
+  ensureHeader(ss.getSheetByName(TABS.BILLS), 'Billbook_Bill_No');
+  ensureHeader(ss.getSheetByName(TABS.PURCHASES), 'Product_Name_EN');
 
   // Add bilingual inventory fields to sheets created with the earlier 11-column schema.
   const inventorySheet = ss.getSheetByName(TABS.INVENTORY);
@@ -302,53 +348,197 @@ function getAllRecords(ss, sheetName) {
   return { success: true, data: list };
 }
 
+function publicInventoryRecord(record) {
+  const publicRecord = Object.assign({}, record);
+  ['Purchase_Price', 'Available_Stock', 'Min_Alert_Qty', 'Updated_At'].forEach(function(header) {
+    const key = Object.keys(publicRecord).find(candidate => normalizeHeader(candidate) === normalizeHeader(header));
+    if (key) delete publicRecord[key];
+  });
+  return publicRecord;
+}
+
+function inventoryWithoutPricingRecord(record) {
+  const safeRecord = Object.assign({}, record);
+  ['Purchase_Price', 'Selling_Price'].forEach(function(header) {
+    const key = Object.keys(safeRecord).find(candidate => normalizeHeader(candidate) === normalizeHeader(header));
+    if (key) delete safeRecord[key];
+  });
+  return safeRecord;
+}
+
+function publicProductRecord(record) {
+  const publicRecord = Object.assign({}, record);
+  const priceKey = Object.keys(publicRecord).find(candidate => normalizeHeader(candidate) === 'price');
+  if (priceKey) delete publicRecord[priceKey];
+  return publicRecord;
+}
+
+function requireStaffOrAdmin(ss, token) {
+  const session = validateAuthSession(ss, token);
+  if (!session.valid || !session.user) return { success: false, error: 'Sign in is required to access these records.' };
+  if (session.user.role !== 'admin' && session.user.role !== 'staff') {
+    return { success: false, error: 'These records are not available for this account.' };
+  }
+  return { success: true };
+}
+
+function getBillsForCustomer(ss, token) {
+  const session = validateAuthSession(ss, token);
+  if (!session.valid || !session.user || session.user.role !== 'customer') {
+    return { success: false, error: 'A valid customer session is required.' };
+  }
+  const mobile = String(session.user.mobile || String(session.user.id || '').replace(/^CUST-/i, ''))
+    .replace(/\D/g, '').slice(-10);
+  if (!mobile) return { success: false, error: 'No mobile number is associated with this account.' };
+
+  const sheet = ss.getSheetByName(TABS.BILLS);
+  if (!sheet || sheet.getLastRow() <= 1) return { success: true, data: [] };
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const columns = headers.map(normalizeHeader);
+  const mobileColumn = columns.findIndex(key => key === 'mobile' || key === 'customermobile');
+  const billNoColumn = columns.indexOf('billno');
+  const billBookColumn = columns.indexOf('billbookbillno');
+  const dateColumn = columns.indexOf('date');
+  const itemsColumn = columns.indexOf('itemsjson');
+  if (mobileColumn < 0) return { success: false, error: 'Bills sheet has no customer mobile column.' };
+
+  const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+  const data = [];
+  for (let index = rows.length - 1; index >= 0; index--) {
+    const rowMobile = String(rows[index][mobileColumn] || '').replace(/\D/g, '').slice(-10);
+    if (rowMobile !== mobile) continue;
+    let sourceItems = [];
+    if (itemsColumn >= 0) {
+      try {
+        sourceItems = typeof rows[index][itemsColumn] === 'string'
+          ? JSON.parse(rows[index][itemsColumn] || '[]')
+          : (rows[index][itemsColumn] || []);
+      } catch (error) {
+        sourceItems = [];
+      }
+    }
+    const safeItems = (Array.isArray(sourceItems) ? sourceItems : []).map(function(item) {
+      return {
+        id: item.inventoryId || item.productId || item.id || '',
+        name: item.name || item.Name || item.Name_MR || '',
+        nameEn: item.nameEn || item.Name_EN || item.name_en || '',
+        qty: Number(item.qty || item.Quantity || item.quantity || 0),
+        unit: item.unit || item.Unit || 'नग'
+      };
+    });
+    data.push({
+      Bill_No: billNoColumn >= 0 ? rows[index][billNoColumn] : '',
+      Billbook_Bill_No: billBookColumn >= 0 ? rows[index][billBookColumn] : '',
+      Date: dateColumn >= 0 ? rows[index][dateColumn] : '',
+      Items_JSON: JSON.stringify(safeItems)
+    });
+  }
+  return { success: true, data: data, total: data.length };
+}
+
+function normalizeHeader(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function getRecordValue(record, header) {
+  const normalized = normalizeHeader(header);
+  if (Object.prototype.hasOwnProperty.call(record, header)) return record[header];
+  const keys = Object.keys(record || {});
+  const directKey = keys.find(key => normalizeHeader(key) === normalized);
+  if (directKey) return record[directKey];
+
+  const aliases = {
+    id: ['id', 'inventoryid'],
+    name: ['name', 'namemr', 'productname'],
+    category: ['category', 'categorymr', 'categoryname'],
+    company: ['company', 'companymr'],
+    pack: ['pack', 'unitpack'],
+    purchaseprice: ['purchaseprice', 'costprice'],
+    sellingprice: ['sellingprice', 'price'],
+    availablestock: ['availablestock', 'currentstock', 'quantity', 'qty'],
+    minalertqty: ['minalertqty', 'alertqty'],
+    billno: ['billno'],
+    billbookbillno: ['billbookbillno', 'billbooknumber', 'physicalbillno'],
+    date: ['date', 'billdate'],
+    customername: ['customername'],
+    mobile: ['mobile', 'customermobile'],
+    address: ['address', 'customeraddress'],
+    totalamount: ['totalamount'],
+    paidamount: ['paidamount'],
+    balanceamount: ['balanceamount'],
+    paymentstatus: ['paymentstatus'],
+    paymentmode: ['paymentmode'],
+    itemsjson: ['itemsjson', 'items'],
+    notes: ['notes'],
+    createdat: ['createdat'],
+  };
+  const candidates = aliases[normalized] || [normalized];
+  const match = keys.find(key => candidates.includes(normalizeHeader(key)));
+  return match ? record[match] : '';
+}
+
+function ensureHeader(sheet, header) {
+  if (!sheet) return;
+  const lastColumn = Math.max(1, sheet.getLastColumn());
+  const headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
+  if (headers.some(value => normalizeHeader(value) === normalizeHeader(header))) return;
+  const nextColumn = headers.filter(value => value !== '').length + 1;
+  sheet.getRange(1, nextColumn).setValue(header).setFontWeight('bold').setBackground('#176b3a').setFontColor('#ffffff');
+}
+
 // --------------------------------------------------------------------------
 // 4. Save Bill + Deduct Inventory + Update Customer Khata
 // --------------------------------------------------------------------------
 function saveBillRecord(ss, bill) {
   if (!bill) return { success: false, error: 'No bill data provided' };
   
-  const sheet = ss.getSheetByName(TABS.BILLS);
-  if (!sheet) initAllTabs(ss);
+  let sheet = ss.getSheetByName(TABS.BILLS);
+  if (!sheet) {
+    initAllTabs(ss);
+    sheet = ss.getSheetByName(TABS.BILLS);
+  }
+  ensureHeader(sheet, 'Billbook_Bill_No');
   
   const billNo = bill.billNo || ('SKSK-' + Date.now());
   const billDate = bill.billDate || new Date().toISOString().split('T')[0];
   const itemsJson = typeof bill.items === 'string' ? bill.items : JSON.stringify(bill.items || []);
   
   // Append to Bills Sheet
-  const billRow = [
-    billNo,
-    billDate,
-    bill.customerName || '',
-    bill.customerMobile || '',
-    bill.customerAddress || '',
-    Number(bill.totalAmount || 0),
-    Number(bill.paidAmount || 0),
-    Number(bill.balanceAmount || 0),
-    bill.paymentStatus || 'Fully Paid',
-    bill.paymentMode || 'Cash',
-    itemsJson,
-    bill.notes || '',
-    new Date().toISOString()
-  ];
-  sheet.appendRow(billRow);
+  const billRecord = Object.assign({}, bill, {
+    billNo: billNo,
+    billDate: billDate,
+    items: itemsJson,
+    createdAt: new Date().toISOString()
+  });
+  const billHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  sheet.appendRow(billHeaders.map(header => getRecordValue(billRecord, header)));
   
   // Deduct Inventory Quantities
   if (Array.isArray(bill.items)) {
     const invSheet = ss.getSheetByName(TABS.INVENTORY);
     if (invSheet && invSheet.getLastRow() > 1) {
+      const invHeaders = invSheet.getRange(1, 1, 1, invSheet.getLastColumn()).getValues()[0];
+      const idColumn = invHeaders.findIndex(header => normalizeHeader(header) === 'id');
+      const nameColumn = invHeaders.findIndex(header => ['name', 'namemr', 'productname'].includes(normalizeHeader(header)));
+      const nameEnColumn = invHeaders.findIndex(header => ['nameen', 'productnameen'].includes(normalizeHeader(header)));
+      const stockColumn = invHeaders.findIndex(header => ['availablestock', 'currentstock', 'quantity', 'qty'].includes(normalizeHeader(header)));
+      const updatedColumn = invHeaders.findIndex(header => normalizeHeader(header) === 'updatedat');
       const invData = invSheet.getRange(2, 1, invSheet.getLastRow() - 1, invSheet.getLastColumn()).getValues();
       bill.items.forEach(item => {
         const itemName = (item.name || '').trim().toLowerCase();
+        const itemNameEn = (item.nameEn || item.name_EN || '').trim().toLowerCase();
+        const itemId = item.inventoryId || item.productId || item.id;
         const qtyUsed = Number(item.qty || 0);
         if (qtyUsed > 0) {
           for (let r = 0; r < invData.length; r++) {
-            const stockName = String(invData[r][1] || '').trim().toLowerCase();
-            if (stockName === itemName || String(invData[r][0]) === String(item.id)) {
-              let currentStock = Number(invData[r][8] || 0);
+            const stockName = nameColumn >= 0 ? String(invData[r][nameColumn] || '').trim().toLowerCase() : '';
+            const stockNameEn = nameEnColumn >= 0 ? String(invData[r][nameEnColumn] || '').trim().toLowerCase() : '';
+            const stockId = idColumn >= 0 ? String(invData[r][idColumn]) : '';
+            if ((itemId && stockId === String(itemId)) || (itemName && stockName === itemName) || (itemNameEn && stockNameEn === itemNameEn)) {
+              const currentStock = stockColumn >= 0 ? Number(invData[r][stockColumn] || 0) : 0;
               let newStock = Math.max(0, currentStock - qtyUsed);
-              invSheet.getRange(r + 2, 9).setValue(newStock); // Column 9 is Available_Stock
-              invSheet.getRange(r + 2, 11).setValue(new Date().toISOString());
+              if (stockColumn >= 0) invSheet.getRange(r + 2, stockColumn + 1).setValue(newStock);
+              if (updatedColumn >= 0) invSheet.getRange(r + 2, updatedColumn + 1).setValue(new Date().toISOString());
               break;
             }
           }
@@ -398,46 +588,35 @@ function saveChallanRecord(ss, challan) {
 // 6. Save or Update Inventory Item
 // --------------------------------------------------------------------------
 function saveInventoryItem(ss, item) {
-  const sheet = ss.getSheetByName(TABS.INVENTORY);
-  if (!sheet) initAllTabs(ss);
-  
+  let sheet = ss.getSheetByName(TABS.INVENTORY);
+  if (!sheet) {
+    initAllTabs(ss);
+    sheet = ss.getSheetByName(TABS.INVENTORY);
+  }
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const idColumn = headers.findIndex(header => normalizeHeader(header) === 'id');
   const id = item.id || ('INV-' + Date.now());
   const lastRow = sheet.getLastRow();
   
-  if (lastRow > 1) {
-    const ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues().map(r => String(r[0]));
+  if (lastRow > 1 && idColumn >= 0) {
+    const ids = sheet.getRange(2, idColumn + 1, lastRow - 1, 1).getValues().map(r => String(r[0]));
     const index = ids.indexOf(String(id));
     if (index !== -1) {
-      // Update existing
       const r = index + 2;
-      sheet.getRange(r, 2).setValue(item.name);
-      sheet.getRange(r, 3).setValue(item.category);
-      sheet.getRange(r, 4).setValue(item.subcategory);
-      sheet.getRange(r, 5).setValue(item.company);
-      sheet.getRange(r, 6).setValue(item.unit);
-      sheet.getRange(r, 7).setValue(Number(item.purchasePrice || 0));
-      sheet.getRange(r, 8).setValue(Number(item.sellingPrice || 0));
-      sheet.getRange(r, 9).setValue(Number(item.availableStock || 0));
-      sheet.getRange(r, 10).setValue(Number(item.minAlertQty || 5));
-      sheet.getRange(r, 11).setValue(new Date().toISOString());
+      const existing = sheet.getRange(r, 1, 1, headers.length).getValues()[0];
+      const values = headers.map((header, column) => {
+        if (column === idColumn) return existing[column];
+        if (normalizeHeader(header) === 'updatedat') return new Date().toISOString();
+        return getRecordValue(item, header);
+      });
+      sheet.getRange(r, 1, 1, headers.length).setValues([values]);
       return { success: true, message: 'स्टॉक अपडेट झाला', id: id };
     }
   }
   
   // Insert new
-  sheet.appendRow([
-    id,
-    item.name,
-    item.category || 'इतर',
-    item.subcategory || '',
-    item.company || '',
-    item.unit || 'नग',
-    Number(item.purchasePrice || 0),
-    Number(item.sellingPrice || 0),
-    Number(item.availableStock || 0),
-    Number(item.minAlertQty || 5),
-    new Date().toISOString()
-  ]);
+  const newItem = Object.assign({}, item, { id: id, updatedAt: new Date().toISOString() });
+  sheet.appendRow(headers.map(header => getRecordValue(newItem, header)));
   
   return { success: true, message: 'नवीन उत्पादन इन्व्हेंटरीमध्ये जोडले गेले!', id: id };
 }
@@ -446,47 +625,49 @@ function saveInventoryItem(ss, item) {
 // 7. Save Bulk Purchase Lot
 // --------------------------------------------------------------------------
 function savePurchaseLot(ss, lot) {
-  const sheet = ss.getSheetByName(TABS.PURCHASES);
-  if (!sheet) initAllTabs(ss);
+  let sheet = ss.getSheetByName(TABS.PURCHASES);
+  if (!sheet) {
+    initAllTabs(ss);
+    sheet = ss.getSheetByName(TABS.PURCHASES);
+  }
+  ensureHeader(sheet, 'Product_Name_EN');
   
   const lotId = lot.lotId || ('LOT-' + Date.now());
   const qty = Number(lot.bulkQty || 1);
   const totalCost = Number(lot.totalCost || 0);
   const unitCost = qty > 0 ? (totalCost / qty) : totalCost;
-  
-  sheet.appendRow([
-    lotId,
-    lot.date || new Date().toISOString().split('T')[0],
-    lot.supplier || '',
-    lot.category || '',
-    lot.productName || '',
-    qty,
-    lot.unit || 'नग',
-    totalCost,
-    unitCost,
-    Number(lot.sellingPrice || 0),
-    lot.notes || ''
-  ]);
-  
-  // Also add or increment in Inventory
-  const invSheet = ss.getSheetByName(TABS.INVENTORY);
-  if (invSheet) {
-    let found = false;
-    if (invSheet.getLastRow() > 1) {
-      const invValues = invSheet.getRange(2, 1, invSheet.getLastRow() - 1, 2).getValues();
-      for (let r = 0; r < invValues.length; r++) {
-        if (String(invValues[r][1]).trim().toLowerCase() === String(lot.productName).trim().toLowerCase()) {
-          const curStock = Number(invSheet.getRange(r + 2, 9).getValue() || 0);
-          invSheet.getRange(r + 2, 9).setValue(curStock + qty);
-          invSheet.getRange(r + 2, 7).setValue(unitCost);
-          if (lot.sellingPrice) invSheet.getRange(r + 2, 8).setValue(Number(lot.sellingPrice));
-          invSheet.getRange(r + 2, 11).setValue(new Date().toISOString());
-          found = true;
-          break;
-        }
-      }
+
+  const lotRecord = Object.assign({}, lot, {
+    lotId: lotId,
+    bulkQty: qty,
+    totalCost: totalCost,
+    unitCost: unitCost,
+    sellingPrice: Number(lot.sellingPrice || 0)
+  });
+  const lotHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  sheet.appendRow(lotHeaders.map(header => getRecordValue(lotRecord, header)));
+
+  if (lot.inventoryItem) {
+    saveInventoryItem(ss, lot.inventoryItem);
+  } else {
+    let invSheet = ss.getSheetByName(TABS.INVENTORY);
+    if (!invSheet) {
+      initAllTabs(ss);
+      invSheet = ss.getSheetByName(TABS.INVENTORY);
     }
-    if (!found) {
+    const nameColumn = invSheet.getRange(1, 1, 1, invSheet.getLastColumn()).getValues()[0]
+      .findIndex(header => ['name', 'namemr', 'productname'].includes(normalizeHeader(header)));
+    const stockColumn = invSheet.getRange(1, 1, 1, invSheet.getLastColumn()).getValues()[0]
+      .findIndex(header => ['availablestock', 'currentstock', 'quantity', 'qty'].includes(normalizeHeader(header)));
+    let existingRow = 0;
+    if (invSheet.getLastRow() > 1 && nameColumn >= 0 && stockColumn >= 0) {
+      const values = invSheet.getRange(2, 1, invSheet.getLastRow() - 1, invSheet.getLastColumn()).getValues();
+      existingRow = values.findIndex(row => String(row[nameColumn]).trim().toLowerCase() === String(lot.productName).trim().toLowerCase()) + 2;
+    }
+    if (existingRow > 1) {
+      const current = Number(invSheet.getRange(existingRow, stockColumn + 1).getValue() || 0);
+      invSheet.getRange(existingRow, stockColumn + 1).setValue(current + qty);
+    } else {
       saveInventoryItem(ss, {
         id: 'INV-' + Date.now(),
         name: lot.productName,
@@ -499,6 +680,8 @@ function savePurchaseLot(ss, lot) {
       });
     }
   }
+
+  updateCachedStats(ss);
   
   return { success: true, message: 'घाऊक खरेदी नोंद झाली व स्टॉक वाढवला गेला!', lotId: lotId };
 }
@@ -509,16 +692,20 @@ function savePurchaseLot(ss, lot) {
 function adjustStock(ss, id, delta, reason) {
   const sheet = ss.getSheetByName(TABS.INVENTORY);
   if (!sheet || sheet.getLastRow() <= 1) return { success: false, error: 'Inventory empty' };
-  
-  const ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues().map(r => String(r[0]));
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const idColumn = headers.findIndex(header => normalizeHeader(header) === 'id');
+  const stockColumn = headers.findIndex(header => ['availablestock', 'currentstock', 'quantity', 'qty'].includes(normalizeHeader(header)));
+  const updatedColumn = headers.findIndex(header => normalizeHeader(header) === 'updatedat');
+  if (idColumn < 0 || stockColumn < 0) return { success: false, error: 'Inventory ID or stock column not found' };
+  const ids = sheet.getRange(2, idColumn + 1, sheet.getLastRow() - 1, 1).getValues().map(r => String(r[0]));
   const index = ids.indexOf(String(id));
   if (index === -1) return { success: false, error: 'Product not found' };
   
   const r = index + 2;
-  const current = Number(sheet.getRange(r, 9).getValue() || 0);
+  const current = Number(sheet.getRange(r, stockColumn + 1).getValue() || 0);
   const updated = Math.max(0, current + Number(delta));
-  sheet.getRange(r, 9).setValue(updated);
-  sheet.getRange(r, 11).setValue(new Date().toISOString());
+  sheet.getRange(r, stockColumn + 1).setValue(updated);
+  if (updatedColumn >= 0) sheet.getRange(r, updatedColumn + 1).setValue(new Date().toISOString());
   
   return { success: true, newStock: updated, message: 'स्टॉक यशस्वीरीत्या बदलला (' + reason + ')' };
 }
@@ -529,6 +716,7 @@ function adjustStock(ss, id, delta, reason) {
 function updateCustomerKhata(ss, bill) {
   const mobile = String(bill.customerMobile || '').trim();
   if (!mobile) return;
+  ensureCustomerUser(ss, mobile, bill.customerName || 'ग्राहक');
   
   const custSheet = ss.getSheetByName(TABS.CUSTOMERS);
   if (!custSheet) return;
@@ -567,6 +755,46 @@ function updateCustomerKhata(ss, bill) {
   ]);
 }
 
+function ensureCustomerUser(ss, mobile, fullName) {
+  const normalizedMobile = String(mobile || '').replace(/\D/g, '').slice(-10);
+  if (!/^[6-9]\d{9}$/.test(normalizedMobile)) return;
+  let sheet = ss.getSheetByName(TABS.USERS);
+  if (!sheet) {
+    initAllTabs(ss);
+    sheet = ss.getSheetByName(TABS.USERS);
+  }
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const keys = headers.map(normalizeHeader);
+  const mobileColumn = keys.findIndex(key => key === 'mobile');
+  const usernameColumn = keys.findIndex(key => key === 'username');
+  const values = headers.map(header => {
+    const key = normalizeHeader(header);
+    if (key === 'id') return 'CUST-' + normalizedMobile;
+    if (key === 'username') return normalizedMobile;
+    if (key === 'password') return normalizedMobile;
+    if (key === 'role') return 'customer';
+    if (key === 'fullname' || key === 'name' || key === 'customername') return fullName || 'ग्राहक';
+    if (key === 'mobile') return normalizedMobile;
+    if (key === 'createdat') return new Date().toISOString();
+    return '';
+  });
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    if (sheet.getLastRow() > 1) {
+      const users = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+      const exists = users.some(row =>
+        (mobileColumn >= 0 && String(row[mobileColumn]).replace(/\D/g, '').slice(-10) === normalizedMobile) ||
+        (usernameColumn >= 0 && String(row[usernameColumn]).trim() === normalizedMobile)
+      );
+      if (exists) return;
+    }
+    sheet.appendRow(values);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 // --------------------------------------------------------------------------
 // 10. Update & Fetch Cached Stats for Ultra-Fast Dashboards
 // --------------------------------------------------------------------------
@@ -584,12 +812,16 @@ function updateCachedStats(ss) {
   let totalUdhaari = 0;
   
   if (billsSheet && billsSheet.getLastRow() > 1) {
-    const billValues = billsSheet.getRange(2, 6, billsSheet.getLastRow() - 1, 3).getValues();
+    const headers = billsSheet.getRange(1, 1, 1, billsSheet.getLastColumn()).getValues()[0].map(normalizeHeader);
+    const totalColumn = headers.indexOf('totalamount');
+    const paidColumn = headers.indexOf('paidamount');
+    const balanceColumn = headers.indexOf('balanceamount');
+    const billValues = billsSheet.getRange(2, 1, billsSheet.getLastRow() - 1, headers.length).getValues();
     totalBills = billValues.length;
     billValues.forEach(row => {
-      totalSales += Number(row[0] || 0);
-      totalPaid += Number(row[1] || 0);
-      totalUdhaari += Number(row[2] || 0);
+      totalSales += totalColumn >= 0 ? Number(row[totalColumn] || 0) : 0;
+      totalPaid += paidColumn >= 0 ? Number(row[paidColumn] || 0) : 0;
+      totalUdhaari += balanceColumn >= 0 ? Number(row[balanceColumn] || 0) : 0;
     });
   }
   
@@ -598,12 +830,16 @@ function updateCachedStats(ss) {
   let lowStockCount = 0;
   
   if (invSheet && invSheet.getLastRow() > 1) {
-    const invValues = invSheet.getRange(2, 7, invSheet.getLastRow() - 1, 4).getValues();
+    const headers = invSheet.getRange(1, 1, 1, invSheet.getLastColumn()).getValues()[0].map(normalizeHeader);
+    const purchaseColumn = headers.indexOf('purchaseprice');
+    const stockColumn = headers.findIndex(header => ['availablestock', 'currentstock', 'quantity', 'qty'].includes(header));
+    const alertColumn = headers.indexOf('minalertqty');
+    const invValues = invSheet.getRange(2, 1, invSheet.getLastRow() - 1, headers.length).getValues();
     totalStockItems = invValues.length;
     invValues.forEach(row => {
-      const pPrice = Number(row[0] || 0);
-      const stock = Number(row[2] || 0);
-      const minAlert = Number(row[3] || 5);
+      const pPrice = purchaseColumn >= 0 ? Number(row[purchaseColumn] || 0) : 0;
+      const stock = stockColumn >= 0 ? Number(row[stockColumn] || 0) : 0;
+      const minAlert = alertColumn >= 0 ? Number(row[alertColumn] || 5) : 5;
       totalStockValuation += (pPrice * stock);
       if (stock <= minAlert) lowStockCount++;
     });
@@ -649,22 +885,33 @@ function authenticateUser(ss, username, password) {
   if (!sheet || sheet.getLastRow() <= 1) {
     return { success: false, error: 'No users configured in sheet' };
   }
-  const users = sheet.getRange(2, 1, sheet.getLastRow() - 1, 6).getValues();
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const columns = headers.map(normalizeHeader);
+  const idColumn = columns.indexOf('id');
+  const usernameColumn = columns.indexOf('username');
+  const passwordColumn = columns.indexOf('password');
+  const roleColumn = columns.indexOf('role');
+  const nameColumn = columns.findIndex(key => ['fullname', 'name', 'customername'].includes(key));
+  const mobileColumn = columns.indexOf('mobile');
+  if ([idColumn, usernameColumn, passwordColumn, roleColumn].some(column => column < 0)) {
+    return { success: false, error: 'Users sheet is missing a required authentication column.' };
+  }
+  const users = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
   const u = String(username || '').trim().toLowerCase();
   const p = String(password || '').trim();
   
   for (let i = 0; i < users.length; i++) {
-    const rowU = String(users[i][1]).trim().toLowerCase();
-    const rowP = String(users[i][2]).trim();
-    const rowMobile = String(users[i][5]).trim();
+    const rowU = String(users[i][usernameColumn]).trim().toLowerCase();
+    const rowP = String(users[i][passwordColumn]).trim();
+    const rowMobile = mobileColumn >= 0 ? String(users[i][mobileColumn]).trim() : '';
     
     if ((rowU === u || rowMobile === u) && rowP === p) {
       const user = {
-        id: users[i][0],
-        username: users[i][1],
-        role: users[i][3],
-        fullName: users[i][4],
-        mobile: users[i][5]
+        id: users[i][idColumn],
+        username: users[i][usernameColumn],
+        role: users[i][roleColumn],
+        fullName: nameColumn >= 0 ? users[i][nameColumn] : '',
+        mobile: mobileColumn >= 0 ? users[i][mobileColumn] : ''
       };
       const token = Utilities.getUuid() + Utilities.getUuid() + Utilities.getUuid();
       const fingerprint = credentialFingerprint(p);
@@ -756,11 +1003,19 @@ function validateAuthSession(ss, token) {
       sessions.getRange(i + 2, 6).setValue(true);
       return { success: true, valid: false, reason: 'user_missing' };
     }
-    const userRows = users.getRange(2, 1, users.getLastRow() - 1, 6).getValues();
+    const userHeaders = users.getRange(1, 1, 1, users.getLastColumn()).getValues()[0];
+    const userColumns = userHeaders.map(normalizeHeader);
+    const userIdColumn = userColumns.indexOf('id');
+    const userPasswordColumn = userColumns.indexOf('password');
+    const userUsernameColumn = userColumns.indexOf('username');
+    const userRoleColumn = userColumns.indexOf('role');
+    const userNameColumn = userColumns.findIndex(key => ['fullname', 'name', 'customername'].includes(key));
+    const userMobileColumn = userColumns.indexOf('mobile');
+    const userRows = users.getRange(2, 1, users.getLastRow() - 1, userHeaders.length).getValues();
     const userRow = userRows.find(function(row) {
-      return String(row[0]) === String(rows[i][1]);
+      return userIdColumn >= 0 && String(row[userIdColumn]) === String(rows[i][1]);
     });
-    if (!userRow || credentialFingerprint(userRow[2]) !== String(rows[i][2])) {
+    if (!userRow || userPasswordColumn < 0 || credentialFingerprint(userRow[userPasswordColumn]) !== String(rows[i][2])) {
       sessions.getRange(i + 2, 6).setValue(true);
       return { success: true, valid: false, reason: 'credentials_changed' };
     }
@@ -770,15 +1025,39 @@ function validateAuthSession(ss, token) {
       success: true,
       valid: true,
       user: {
-        id: userRow[0],
-        username: userRow[1],
-        role: userRow[3],
-        fullName: userRow[4],
-        mobile: userRow[5]
+        id: userRow[userIdColumn],
+        username: userUsernameColumn >= 0 ? userRow[userUsernameColumn] : '',
+        role: userRoleColumn >= 0 ? userRow[userRoleColumn] : '',
+        fullName: userNameColumn >= 0 ? userRow[userNameColumn] : '',
+        mobile: userMobileColumn >= 0 ? userRow[userMobileColumn] : ''
       }
     };
   }
   return { success: true, valid: false, reason: 'session_missing' };
+}
+
+function changeUserPassword(ss, token, currentPassword, newPassword) {
+  const current = String(currentPassword || '');
+  const next = String(newPassword || '');
+  if (!token || !current || next.length < 8) {
+    return { success: false, error: 'Current password and a new password of at least 8 characters are required.' };
+  }
+  const session = validateAuthSession(ss, token);
+  if (!session.valid || !session.user) return { success: false, error: 'Session expired. Please sign in again.' };
+
+  const sheet = ss.getSheetByName(TABS.USERS);
+  if (!sheet || sheet.getLastRow() <= 1) return { success: false, error: 'User account was not found.' };
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const idColumn = headers.findIndex(header => normalizeHeader(header) === 'id');
+  const passwordColumn = headers.findIndex(header => normalizeHeader(header) === 'password');
+  if (idColumn < 0 || passwordColumn < 0) return { success: false, error: 'Users sheet is missing ID or Password columns.' };
+
+  const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+  const index = rows.findIndex(row => String(row[idColumn]) === String(session.user.id));
+  if (index < 0) return { success: false, error: 'User account was not found.' };
+  if (String(rows[index][passwordColumn]) !== current) return { success: false, error: 'Current password is incorrect.' };
+  sheet.getRange(index + 2, passwordColumn + 1).setValue(next);
+  return { success: true, message: 'Password updated successfully.' };
 }
 
 function revokeAuthSession(ss, token) {

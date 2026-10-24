@@ -4,18 +4,21 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
 import InvoiceTemplate from '../components/InvoiceTemplate';
+import InventoryProductPicker from '../components/InventoryProductPicker';
 import {
   getAllCustomerBills,
   updateCustomerBill,
   cleanMobileNumber,
   numberToMarathiWords
 } from '../service/billingService';
-import { fetchRecentRecords } from '../service/googleSheetsService';
+import { fetchRecentRecords, getLiveInventoryItems } from '../service/googleSheetsService';
+import { normalizeBillRow } from '../utils/sheetData';
 import '../CSS/billing.css';
 
 export default function BillHistory() {
   const [bills, setBills] = useState([]);
-  const [customerRows, setCustomerRows] = useState([]);
+  const [uniqueCustomerCount, setUniqueCustomerCount] = useState(0);
+  const [inventory, setInventory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -45,25 +48,30 @@ export default function BillHistory() {
 
   const historyInvoiceRef = useRef(null);
 
+  useEffect(() => {
+    getLiveInventoryItems().then(setInventory).catch((error) => console.warn('Inventory load error:', error));
+  }, []);
+
   const loadData = async (pageNum = currentPage) => {
     setLoading(true);
     try {
       // 1. Fetch paginated recent 10 bills from Google Sheets / Local DB
-      const res = await fetchRecentRecords('Bills', {
-        page: pageNum,
-        limit: 10,
-        search: searchQuery
-      });
+      const [res, customersRes] = await Promise.all([
+        fetchRecentRecords('Bills', { page: pageNum, limit: 10, search: searchQuery }),
+        fetchRecentRecords('Customers', { page: 1, limit: 1 })
+      ]);
 
       let items = res.items || [];
       // Also merge with any Supabase customer rows if local is empty
       if (items.length === 0) {
         const { allBills, customerRows: rows } = await getAllCustomerBills();
         items = allBills || [];
-        setCustomerRows(rows || []);
+        setUniqueCustomerCount(Math.max(customersRes.total || 0, (rows || []).length));
+      } else {
+        setUniqueCustomerCount(customersRes.total || (customersRes.items || []).length);
       }
 
-      setBills(items);
+      setBills(items.map(normalizeBillRow));
       setTotalPages(res.totalPages || 1);
       setTotalCount(res.total || items.length);
       setCurrentPage(res.page || pageNum);
@@ -86,10 +94,14 @@ export default function BillHistory() {
   // Filter bills by status
   const filteredBills = bills.filter((b) => {
     const q = searchQuery.toLowerCase().trim();
+    const itemSearch = (b.items || []).map((item) => `${item.name || ''} ${item.nameEn || ''}`).join(' ').toLowerCase();
     const matchesSearch = !q || (
-      (b.customerName || b.Customer_Name || '').toLowerCase().includes(q) ||
-      (b.customerMobile || b.Mobile || '').includes(q) ||
-      (b.billNo || b.Bill_No || '').toLowerCase().includes(q)
+      String(b.customerName || '').toLowerCase().includes(q) ||
+      String(b.customerMobile || '').includes(q) ||
+      String(b.billNo || '').toLowerCase().includes(q) ||
+      String(b.billBookBillNo || '').toLowerCase().includes(q) ||
+      String(b.billDate || '').toLowerCase().includes(q) ||
+      itemSearch.includes(q)
     );
     if (!matchesSearch) return false;
 
@@ -101,7 +113,7 @@ export default function BillHistory() {
 
   // Open Bill in View Mode
   const handleOpenBill = (bill) => {
-    setActiveBill(bill);
+    setActiveBill(normalizeBillRow(bill));
     setIsEditMode(false);
     setViewActivityLog(false);
     setUpdateSuccess(false);
@@ -139,6 +151,16 @@ export default function BillHistory() {
   const handleEditItemChange = (index, field, value) => {
     const updated = [...editItems];
     const item = { ...updated[index], [field]: value };
+    if (field === 'name') {
+      const matched = inventory.find((entry) => [entry.name, entry.nameEn].some((name) => String(name || '').trim().toLowerCase() === value.trim().toLowerCase()));
+      item.name = matched?.name || value;
+      item.inventoryId = matched?.id || '';
+      item.nameEn = matched?.nameEn || '';
+      if (matched) {
+        item.unit = matched.unit || item.unit;
+        item.price = matched.sellingPrice || item.price;
+      }
+    }
     const qty = Number(field === 'qty' ? value : item.qty) || 0;
     const price = Number(field === 'price' ? value : item.price) || 0;
     item.total = Math.round(qty * price * 100) / 100;
@@ -291,7 +313,7 @@ export default function BillHistory() {
         }}>
           <span style={{ fontSize: '12px', color: '#627c6b', fontWeight: '600' }}>एकूण ग्राहक (Unique Customers)</span>
           <strong style={{ display: 'block', fontSize: '26px', color: '#176b3a', marginTop: '4px' }}>
-            {customerRows.length}
+            {uniqueCustomerCount}
           </strong>
         </div>
 
@@ -313,7 +335,7 @@ export default function BillHistory() {
       <div className="bill-history-search">
         <input
           type="text"
-          placeholder="🔍 १० अंकी मोबाईल नंबर, ग्राहकाचे नाव किंवा बिल क्र. ने शोधा..."
+          placeholder="🔍 बिलबुक क्रमांक, ग्राहक, मोबाईल, तारीख किंवा उत्पादन शोधा..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           style={{
@@ -372,7 +394,7 @@ export default function BillHistory() {
             <table className="bill-table">
             <thead>
               <tr>
-                <th>डिजिटल बिल आयडी (Unique ID)</th>
+                <th>डिजिटल / बिलबुक क्रमांक</th>
                 <th>तारीख</th>
                 <th>ग्राहकाचे नाव</th>
                 <th>मोबाईल नंबर</th>
@@ -392,7 +414,8 @@ export default function BillHistory() {
                 return (
                   <tr key={bill.billNo || index}>
                     <td>
-                      <strong style={{ color: '#176b3a', fontSize: '12.5px' }}>{bill.billNo || bill.Bill_No}</strong>
+                      <strong style={{ color: '#176b3a', fontSize: '12.5px' }}>{bill.billNo}</strong>
+                      {bill.billBookBillNo && <div style={{ marginTop: '3px', color: '#5d6d61', fontSize: '11px' }}>बुक: {bill.billBookBillNo}</div>}
                       {bill.updatedAt && (
                         <div style={{ display: 'flex', gap: '4px', alignItems: 'center', marginTop: '2px' }}>
                           <span style={{ fontSize: '10px', color: '#dc2626', fontWeight: '600' }}>
@@ -401,8 +424,8 @@ export default function BillHistory() {
                         </div>
                       )}
                     </td>
-                    <td style={{ fontSize: '13px' }}>{bill.billDate || bill.Date}</td>
-                    <td style={{ fontWeight: '600' }}>{bill.customerName || bill.Customer_Name}</td>
+                    <td style={{ fontSize: '13px' }}>{bill.billDate}</td>
+                    <td style={{ fontWeight: '600' }}>{bill.customerName}</td>
                     <td>
                       <span style={{
                         background: '#f2f7f3',
@@ -603,33 +626,8 @@ export default function BillHistory() {
                         ? '👁️ बिल पावती पहा'
                         : `📜 बदल इतिहास (${activeBill.editHistory?.length || 0})`}
                     </button>
-                    <button
-                      type="button"
-                      className="secondary-btn"
-                      onClick={() => window.print()}
-                      style={{ padding: '8px 14px', fontSize: '13px' }}
-                    >
-                      🖨️ प्रिंट
-                    </button>
-                    <button
-                      type="button"
-                      className="primary-btn"
-                      onClick={() => triggerPdfDownload(activeBill)}
-                      style={{ padding: '8px 14px', fontSize: '13px' }}
-                    >
-                      📥 PDF
-                    </button>
                   </>
-                ) : (
-                  <button
-                    type="button"
-                    className="btn-cancel-edit"
-                    onClick={() => setIsEditMode(false)}
-                    style={{ padding: '8px 14px', fontSize: '13px' }}
-                  >
-                    ✕ संपादन रद्द करा
-                  </button>
-                )}
+                ) : null}
 
                 <button
                   onClick={() => setModalOpen(false)}
@@ -950,10 +948,10 @@ export default function BillHistory() {
                                 {index + 1}
                               </td>
                               <td>
-                                <input
-                                  type="text"
+                                <InventoryProductPicker
+                                  inventory={inventory}
                                   value={item.name}
-                                  onChange={(e) => handleEditItemChange(index, 'name', e.target.value)}
+                                  onChange={(value) => handleEditItemChange(index, 'name', value)}
                                   required
                                 />
                               </td>
@@ -972,14 +970,7 @@ export default function BillHistory() {
                                   value={item.unit}
                                   onChange={(e) => handleEditItemChange(index, 'unit', e.target.value)}
                                 >
-                                  <option value="नग">नग (Nos)</option>
-                                  <option value="बॅग">बॅग (Bag)</option>
-                                  <option value="लिटर">लिटर (Litre)</option>
-                                  <option value="मि.ली.">मि.ली. (ml)</option>
-                                  <option value="किलो">किलो (Kg)</option>
-                                  <option value="ग्रॅम">ग्रॅम (Gram)</option>
-                                  <option value="बाटली">बाटली (Bottle)</option>
-                                  <option value="पॅकेट">पॅकेट (Packet)</option>
+                                  {[...new Set(['नग', 'बॅग', 'लिटर', 'मि.ली.', 'किलो', 'ग्रॅम', 'बाटली', 'पॅकेट', ...inventory.map((entry) => entry.unit).filter(Boolean)])].map((unit) => <option key={unit} value={unit}>{unit}</option>)}
                                 </select>
                               </td>
                               <td>
@@ -1070,14 +1061,6 @@ export default function BillHistory() {
               {!isEditMode ? (
                 /* Normal Mode Footer */
                 <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-                  <button
-                    type="button"
-                    className="btn-edit-trigger"
-                    onClick={handleStartEditing}
-                  >
-                    ✏️ हे बिल संपादित करा (Edit Bill)
-                  </button>
-
                   <div style={{ display: 'flex', gap: '10px' }}>
                     <button
                       type="button"

@@ -15,7 +15,6 @@ import {
   Search
 } from '../components/Icons';
 
-import { products as fallbackProducts } from '../data/products';
 import { getProducts } from '../service/productService';
 
 import ProductCard from '../components/ProductCard';
@@ -26,11 +25,11 @@ import AiAgriAdvisor from '../components/AiAgriAdvisor';
 
 
 export default function Home() {
-  const [products, setProducts] = useState(fallbackProducts);
+  const [products, setProducts] = useState([]);
 
   useEffect(() => {
     let active = true;
-    getProducts().then((items) => { if (active && items.length) setProducts(items); }).catch(() => {});
+    getProducts().then((items) => { if (active) setProducts(items); }).catch(() => {});
     return () => { active = false; };
   }, []);
 

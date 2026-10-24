@@ -4,6 +4,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
 import InvoiceTemplate from '../components/InvoiceTemplate';
+import InventoryProductPicker from '../components/InventoryProductPicker';
 import {
   generateDigitalBillNumber,
   generatePreviewBillNo,
@@ -12,7 +13,7 @@ import {
   saveCustomerBill
 } from '../service/billingService';
 import {
-  getAllInventoryItems,
+  getLiveInventoryItems,
   saveBillWithInventoryDeduction
 } from '../service/googleSheetsService';
 import ShopProp from '../config/shopProps';
@@ -27,6 +28,7 @@ export default function CreateBill() {
   const [customerMobile, setCustomerMobile] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
   const [billDate, setBillDate] = useState(getTodayDate());
+  const [billBookBillNo, setBillBookBillNo] = useState('');
   const [finalGeneratedBillNo, setFinalGeneratedBillNo] = useState(null);
 
   // Enhanced Payment Status & Options
@@ -55,12 +57,7 @@ export default function CreateBill() {
 
   // Load inventory on mount
   useEffect(() => {
-    try {
-      const itemsList = getAllInventoryItems();
-      setInventory(itemsList);
-    } catch (e) {
-      console.warn('Inventory load error:', e);
-    }
+    getLiveInventoryItems().then(setInventory).catch((e) => console.warn('Inventory load error:', e));
   }, []);
 
   // Prepopulate if redirected from Challan conversion
@@ -91,9 +88,15 @@ export default function CreateBill() {
 
   // When product name is selected, auto-fill unit, price & show stock
   const handleSelectProduct = (index, name) => {
-    const matched = inventory.find(i => i.name === name);
+    const matched = inventory.find((item) => [item.name, item.nameEn].some((value) => String(value || '').trim().toLowerCase() === name.trim().toLowerCase()));
     const updated = [...items];
-    const item = { ...updated[index], name };
+    const item = {
+      ...updated[index],
+      name: matched?.name || name,
+      inventoryId: matched?.id || '',
+      productId: matched?.productId || matched?.Product_ID || '',
+      nameEn: matched?.nameEn || ''
+    };
 
     if (matched) {
       item.unit = matched.unit || 'नग';
@@ -175,6 +178,7 @@ export default function CreateBill() {
       customerMobile: cleanMobileNumber(customerMobile),
       customerAddress: customerAddress.trim(),
       billDate,
+      billBookBillNo: billBookBillNo.trim(),
       paymentStatus,
       paymentMode,
       paidAmount,
@@ -271,6 +275,7 @@ ${billData.notes ? `📝 *नोंद:* ${billData.notes}\n` : ''}
       customerMobile: cleanMobileNumber(customerMobile),
       customerAddress: customerAddress.trim(),
       billDate,
+      billBookBillNo: billBookBillNo.trim(),
       paymentStatus,
       paymentMode,
       paidAmount,
@@ -283,13 +288,13 @@ ${billData.notes ? `📝 *नोंद:* ${billData.notes}\n` : ''}
 
     try {
       // 1. Save with live inventory deduction in Google Sheets & Local DB
-      saveBillWithInventoryDeduction(billData);
+      const savedBill = await saveBillWithInventoryDeduction(billData);
 
       // 2. Also save to Supabase customer_bills table if configured
       await saveCustomerBill(billData).catch((e) => console.warn('Supabase save optional:', e));
 
       // Refresh local inventory view
-      setInventory(getAllInventoryItems());
+      setInventory(await getLiveInventoryItems());
 
       // 3. Execute requested action
       if (type === 'pdf') {
@@ -308,7 +313,8 @@ ${billData.notes ? `📝 *नोंद:* ${billData.notes}\n` : ''}
         paidAmount: billData.paidAmount,
         balanceAmount: billData.balanceAmount,
         paymentStatus: billData.paymentStatus,
-        billData
+        billData: savedBill,
+        isLive: savedBill.isLive
       });
 
       if (previewOpen) {
@@ -328,6 +334,7 @@ ${billData.notes ? `📝 *नोंद:* ${billData.notes}\n` : ''}
     setCustomerMobile('');
     setCustomerAddress('');
     setBillDate(getTodayDate());
+    setBillBookBillNo('');
     setFinalGeneratedBillNo(null);
     setPaymentStatus('Fully Paid');
     setPaymentMode('Cash');
@@ -380,7 +387,9 @@ ${billData.notes ? `📝 *नोंद:* ${billData.notes}\n` : ''}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
             <div>
               <h3 style={{ margin: '0 0 6px', color: '#134023', fontSize: '18px' }}>
-                ✅ बिल यशस्वीरीत्या डेटाबेसमध्ये साठवले गेले व इन्व्हेंटरी स्टॉक अपडेट झाला!
+                {successInfo.isLive
+                  ? '✅ बिल Google Sheet मध्ये जतन झाले व इन्व्हेंटरी स्टॉक अपडेट झाला!'
+                  : '✅ बिल या डिव्हाइसवर जतन झाले; Google Sheets जोडलेले नाही.'}
               </h3>
               <p style={{ margin: '0 0 4px', color: '#274b33', fontSize: '14px' }}>
                 बिल क्र.: <strong>{successInfo.billNo}</strong> | ग्राहक: <strong>{successInfo.customerName}</strong> (मो. {successInfo.customerMobile})
@@ -476,6 +485,16 @@ ${billData.notes ? `📝 *नोंद:* ${billData.notes}\n` : ''}
                 type="date"
                 value={billDate}
                 onChange={(e) => setBillDate(e.target.value)}
+              />
+            </div>
+
+            <div className="form-group">
+              <label>बिलबुक बिल क्रमांक (Billbook Bill No.):</label>
+              <input
+                type="text"
+                value={billBookBillNo}
+                onChange={(e) => setBillBookBillNo(e.target.value)}
+                placeholder="उदा. 0042"
               />
             </div>
 
@@ -576,12 +595,11 @@ ${billData.notes ? `📝 *नोंद:* ${billData.notes}\n` : ''}
                         {index + 1}
                       </td>
                       <td>
-                        <input
-                          type="text"
-                          list="product-stock-options"
-                          placeholder="उत्पादन निवडा किंवा टाईप करा..."
+                        <InventoryProductPicker
+                          inventory={inventory}
                           value={item.name}
-                          onChange={(e) => handleSelectProduct(index, e.target.value)}
+                          onChange={(value) => handleSelectProduct(index, value)}
+                          placeholder="उत्पादन शोधा..."
                           required
                         />
                         {available !== null && (
@@ -612,14 +630,7 @@ ${billData.notes ? `📝 *नोंद:* ${billData.notes}\n` : ''}
                           value={item.unit}
                           onChange={(e) => handleItemChange(index, 'unit', e.target.value)}
                         >
-                          <option value="नग">नग (Nos)</option>
-                          <option value="बॅग">बॅग (Bag)</option>
-                          <option value="लिटर">लिटर (Litre)</option>
-                          <option value="मि.ली.">मि.ली. (ml)</option>
-                          <option value="किलो">किलो (Kg)</option>
-                          <option value="ग्रॅम">ग्रॅम (Gram)</option>
-                          <option value="बाटली">बाटली (Bottle)</option>
-                          <option value="पॅकेट">पॅकेट (Packet)</option>
+                          {[...new Set(['नग', 'बॅग', 'लिटर', 'मि.ली.', 'किलो', 'ग्रॅम', 'बाटली', 'पॅकेट', ...inventory.map((entry) => entry.unit).filter(Boolean)])].map((value) => <option key={value} value={value}>{value}</option>)}
                         </select>
                       </td>
                       <td>
@@ -652,14 +663,6 @@ ${billData.notes ? `📝 *नोंद:* ${billData.notes}\n` : ''}
               </tbody>
             </table>
           </div>
-
-          <datalist id="product-stock-options">
-            {inventory.map((inv, idx) => (
-              <option key={idx} value={inv.name}>
-                [स्टॉक: {inv.availableStock} {inv.unit}] - ₹{inv.sellingPrice}
-              </option>
-            ))}
-          </datalist>
 
           <button
             type="button"

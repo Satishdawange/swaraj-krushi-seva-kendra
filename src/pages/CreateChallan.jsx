@@ -1,9 +1,10 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import ChallanTemplate from '../components/ChallanTemplate';
-import { saveDeliveryChallan, getAllInventoryItems } from '../service/googleSheetsService';
+import InventoryProductPicker from '../components/InventoryProductPicker';
+import { saveDeliveryChallan, getLiveInventoryItems } from '../service/googleSheetsService';
 import { cleanMobileNumber } from '../service/billingService';
 import ShopProp from '../config/shopProps';
 import '../CSS/billing.css';
@@ -28,9 +29,12 @@ export default function CreateChallan() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [successInfo, setSuccessInfo] = useState(null);
   const [errors, setErrors] = useState({});
+  const [inventory, setInventory] = useState([]);
 
   const challanPrintRef = useRef(null);
-  const inventory = getAllInventoryItems();
+  useEffect(() => {
+    getLiveInventoryItems().then(setInventory).catch((error) => console.warn('Inventory load error:', error));
+  }, []);
 
   const handleItemChange = (index, field, value) => {
     const updated = [...items];
@@ -40,10 +44,11 @@ export default function CreateChallan() {
 
   const handleSelectProduct = (index, prodName) => {
     const updated = [...items];
-    const found = inventory.find(i => i.name === prodName);
+    const found = inventory.find((item) => [item.name, item.nameEn].some((value) => String(value || '').trim().toLowerCase() === prodName.trim().toLowerCase()));
     updated[index] = {
       ...updated[index],
-      name: prodName,
+      name: found?.name || prodName,
+      inventoryId: found?.id || '',
       unit: found?.unit || 'नग'
     };
     setItems(updated);
@@ -130,10 +135,11 @@ export default function CreateChallan() {
   const handleConvertToBill = () => {
     if (!validate()) return;
     const billItems = items.map(i => {
-      const found = inventory.find(inv => inv.name === i.name);
+      const found = inventory.find((inv) => inv.id === i.inventoryId || inv.name === i.name);
       const price = Number(found?.sellingPrice || 0);
       return {
         id: Date.now() + Math.random(),
+        inventoryId: found?.id || '',
         name: i.name,
         qty: Number(i.qty || 1),
         unit: i.unit || 'नग',
@@ -405,19 +411,17 @@ export default function CreateChallan() {
               </thead>
               <tbody>
                 {items.map((item, index) => {
-                  const stockMatch = inventory.find(i => i.name === item.name);
+                  const stockMatch = inventory.find(i => i.id === item.inventoryId || i.name === item.name);
                   const available = stockMatch ? stockMatch.availableStock : null;
 
                   return (
                     <tr key={item.id} style={{ borderBottom: '1px solid #edf2ee' }}>
                       <td style={{ padding: '8px 10px' }}>
-                        <input
-                          type="text"
-                          list="inventory-suggestions"
-                          placeholder="उत्पादन निवडा किंवा टाईप करा..."
+                        <InventoryProductPicker
+                          inventory={inventory}
                           value={item.name}
-                          onChange={(e) => handleSelectProduct(index, e.target.value)}
-                          style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #c2d6c7', boxSizing: 'border-box' }}
+                          onChange={(value) => handleSelectProduct(index, value)}
+                          placeholder="उत्पादन शोधा..."
                         />
                         {available !== null && (
                           <div style={{ fontSize: '11px', color: available > 5 ? '#137333' : '#b42318', marginTop: '2px' }}>
@@ -467,13 +471,6 @@ export default function CreateChallan() {
             </table>
           </div>
 
-          <datalist id="inventory-suggestions">
-            {inventory.map((inv, idx) => (
-              <option key={idx} value={inv.name}>
-                {inv.category} (स्टॉक: {inv.availableStock} {inv.unit})
-              </option>
-            ))}
-          </datalist>
         </div>
 
         {/* Options */}

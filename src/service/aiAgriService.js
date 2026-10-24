@@ -1,5 +1,5 @@
 import { getCustomerBills, cleanMobileNumber } from "./billingService.js";
-import { getAllInventoryItems } from "./googleSheetsService.js";
+import { getLiveInventoryItems } from "./googleSheetsService.js";
 
 // Local Storage key for storing custom OpenAI API Key
 export const OPENAI_KEY_STORAGE = 'sksk_openai_api_key';
@@ -59,14 +59,15 @@ async function callChatGPT(messages, apiKey, model = 'gpt-4o-mini') {
   const url = 'https://api.openai.com/v1/chat/completions';
 
   // Inject current inventory snapshot for real-time stock awareness
-  const inventorySnapshot = getAllInventoryItems()
+  const inventorySnapshot = (await getLiveInventoryItems())
+    .filter((item) => item.isActive)
     .slice(0, 15)
-    .map(i => `${i.name} (उपलब्ध: ${i.availableStock} ${i.unit}, किंमत: ₹${i.sellingPrice})`)
+    .map(i => `${i.name}${i.nameEn ? ` / ${i.nameEn}` : ''}${i.availableStock !== undefined ? ` (उपलब्ध: ${i.availableStock} ${i.unit})` : ''}`)
     .join(', ');
 
   const systemContent = `You are a helpful agricultural assistant for farmers in Maharashtra, India. Reply in the same language as the user (Marathi, Hindi, or English). Answer directly without forcing a fixed crop and symptom intake flow. Ask a brief follow-up only when essential details are missing. Explain practical next steps and state uncertainty. For pesticide or fertilizer advice, never invent a dose; prioritize label directions, safe handling, and local expert confirmation. Answer non-agricultural questions helpfully when possible.
 
-Current shop inventory (use only when asked about stock or prices): ${inventorySnapshot || 'No inventory data available.'}`;
+Current shop inventory (use only when asked about product availability; do not provide pricing): ${inventorySnapshot || 'No inventory data available.'}`;
 
   const chatMessages = [
     { role: 'system', content: systemContent },

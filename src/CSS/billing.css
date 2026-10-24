@@ -161,6 +161,82 @@
   background: #ffffff;
 }
 
+.inventory-product-picker {
+  position: relative;
+  min-width: 170px;
+}
+
+.inventory-product-picker > input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #c2d6c7;
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: #23392c;
+  font: inherit;
+}
+
+.inventory-product-options {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 3px);
+  left: 0;
+  right: 0;
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid #c8d8cc;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(20, 48, 30, .18);
+}
+
+.inventory-product-option {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid #edf2ee;
+  background: #fff;
+  padding: 9px 11px;
+  color: #23392c;
+  text-align: left;
+  cursor: pointer;
+}
+
+.inventory-product-option:hover,
+.inventory-product-option.active {
+  background: #f0f7f2;
+}
+
+.inventory-product-option-names {
+  display: grid;
+  gap: 2px;
+}
+
+.inventory-product-option-names strong {
+  color: #176b3a;
+  font-size: 13px;
+}
+
+.inventory-product-option-names small,
+.inventory-product-no-match {
+  color: #68796e;
+  font-size: 11px;
+}
+
+.inventory-product-no-match {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 3px);
+  left: 0;
+  right: 0;
+  border: 1px solid #c8d8cc;
+  border-radius: 6px;
+  background: white;
+  padding: 10px 11px;
+}
+
 .items-input-table input:focus,
 .items-input-table select:focus {
   outline: none;
@@ -328,7 +404,7 @@
   inset: 0;
   background: rgba(14, 30, 20, 0.65);
   backdrop-filter: blur(6px);
-  z-index: 1000;
+  z-index: 1100;
   display: flex;
   align-items: center;
   justify-content: center;

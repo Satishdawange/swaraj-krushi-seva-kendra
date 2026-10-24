@@ -17,6 +17,7 @@ const ProductRequest = lazy(() => import('./pages/ProductRequest'));
 // Login & Customer Portal
 const AdminLogin = lazy(() => import('./pages/AdminLogin'));
 const CustomerPortal = lazy(() => import('./pages/CustomerPortal'));
+const ChangePassword = lazy(() => import('./pages/ChangePassword'));
 
 // Admin, Billing, Inventory & Google Sheets
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
@@ -25,6 +26,7 @@ const CreateChallan = lazy(() => import('./pages/CreateChallan'));
 const BillHistory = lazy(() => import('./pages/BillHistory'));
 const ChallanHistory = lazy(() => import('./pages/ChallanHistory'));
 const Inventory = lazy(() => import('./pages/Inventory'));
+const InventoryManage = lazy(() => import('./pages/InventoryManage'));
 const GoogleSheetsIntegration = lazy(() => import('./pages/GoogleSheetsIntegration'));
 
 export default function App() {
@@ -49,8 +51,16 @@ export default function App() {
           <Route
             path="/customer/portal"
             element={
-              <ProtectedRoute allowedRoles={['customer', 'admin', 'staff']}>
+              <ProtectedRoute allowedRoles={['customer']}>
                 <CustomerPortal />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/account/password"
+            element={
+              <ProtectedRoute allowedRoles={['customer', 'admin', 'staff']}>
+                <ChangePassword />
               </ProtectedRoute>
             }
           />
@@ -101,6 +111,22 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['admin', 'staff']}>
                 <Inventory />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/inventory/manage"
+            element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <InventoryManage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/inventory/manage/:id"
+            element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <InventoryManage />
               </ProtectedRoute>
             }
           />

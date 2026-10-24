@@ -194,8 +194,9 @@
     display: flex !important;
     height: calc(60px + env(safe-area-inset-bottom)) !important;
     padding-bottom: env(safe-area-inset-bottom);
+    box-sizing: border-box;
   }
   .app-shell {
-    padding-bottom: calc(75px + env(safe-area-inset-bottom)) !important;
+    padding-bottom: calc(88px + env(safe-area-inset-bottom)) !important;
   }
 }
