@@ -4,6 +4,7 @@ import {
   clearDashboardMetricsCache,
   getGoogleSheetsConfig,
   loginWithGoogleSheets,
+  changeGoogleSheetsPassword,
   logoutGoogleSheetsSession,
   validateGoogleSheetsSession
 } from '../service/googleSheetsService';
@@ -187,21 +188,36 @@ export function AuthProvider({ children }) {
       if (error) throw error;
     }
 
-    const isMobileOnly = /^[6-9]\d{9}$/.test(id);
-    if (isMobileOnly && (!pwd || pwd === '1234' || pwd === id.slice(-4))) {
-      const customerUser = {
-        id: `farmer-${id}`,
-        username: id,
-        role: 'customer',
-        fullName: `शेतकरी ग्राहक (${id})`,
-        mobile: id,
-        authProvider: 'temporaryCustomer'
-      };
-      setUser(customerUser);
-      return customerUser;
+    throw new Error('चुकीचा आयडी किंवा पासवर्ड! कृपया पुन्हा तपासा.');
+  };
+
+  const changePassword = async ({ currentPassword, newPassword }) => {
+    if (!user) throw new Error('पासवर्ड बदलण्यासाठी लॉग इन करा.');
+    if (!currentPassword || !newPassword) throw new Error('सध्याचा आणि नवीन पासवर्ड भरा.');
+    if (newPassword.length < 8) throw new Error('नवीन पासवर्ड किमान ८ अक्षरांचा असावा.');
+
+    if (user.authProvider === 'googleSheets') {
+      const token = localStorage.getItem(STORAGE_KEY_TOKEN);
+      await changeGoogleSheetsPassword(token, currentPassword, newPassword);
+      const renewed = await loginWithGoogleSheets(user.username, newPassword);
+      const authenticatedUser = { ...renewed.user, authProvider: 'googleSheets' };
+      saveSession(authenticatedUser, renewed.token);
+      setUser(authenticatedUser);
+      return authenticatedUser;
     }
 
-    throw new Error('चुकीचा आयडी किंवा पासवर्ड! कृपया पुन्हा तपासा.');
+    if (user.authProvider === 'supabase' && supabase) {
+      const { error: verifyError } = await supabase.auth.signInWithPassword({
+        email: user.username,
+        password: currentPassword,
+      });
+      if (verifyError) throw new Error('सध्याचा पासवर्ड चुकीचा आहे.');
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      return user;
+    }
+
+    throw new Error('या खात्यासाठी पासवर्ड बदल उपलब्ध नाही.');
   };
 
   const signOut = async () => {
@@ -241,7 +257,8 @@ export function AuthProvider({ children }) {
     loading,
     authError,
     signIn,
-    signOut
+    signOut,
+    changePassword
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

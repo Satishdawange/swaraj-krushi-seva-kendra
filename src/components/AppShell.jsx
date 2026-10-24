@@ -100,20 +100,22 @@ export default function AppShell({ children }) {
         ['/admin/bills', 'बिल इतिहास'],
         ['/admin/challans', 'चालन इतिहास'],
         ['/admin/inventory', 'इन्व्हेंटरी'],
-        ['/admin/sheets', 'डेटा सेटिंग्ज']
+        ['/admin/sheets', 'डेटा सेटिंग्ज'],
+        ['/account/password', 'पासवर्ड बदला']
       ]
     : isStaff
       ? [
           ['/admin/billing', 'नवीन बिल'],
           ['/admin/bills', 'बिल इतिहास'],
           ['/admin/challans', 'चालन इतिहास'],
-          ['/admin/inventory', 'इन्व्हेंटरी']
+          ['/admin/inventory', 'इन्व्हेंटरी'],
+          ['/account/password', 'पासवर्ड बदला']
         ]
       : isCustomer
         ? [
-            ['/products', 'उत्पादने'],
-            ['/services', 'सेवा'],
-            ['/customer/portal', 'माझे खाते']
+            ...publicLinks,
+            ['/customer/portal', 'माझे खाते'],
+            ['/account/password', 'पासवर्ड बदला']
           ]
         : publicLinks;
 

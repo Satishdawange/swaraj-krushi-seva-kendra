@@ -39,7 +39,7 @@ export default function AdminLogin() {
       return;
     }
 
-    if (activePersona !== 'customer' && !password.trim()) {
+    if (!password.trim()) {
       setError('कृपया पासवर्ड भरा.');
       return;
     }
@@ -238,7 +238,7 @@ export default function AdminLogin() {
               type={showPassword ? 'text' : 'password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder={activePersona === 'customer' ? 'ग्राहक लॉगिनसाठी रिकामे ठेवू शकता' : 'पासवर्ड प्रविष्ट करा'}
+              placeholder={activePersona === 'customer' ? 'प्रथम लॉगिनसाठी तुमचा मोबाईल नंबर' : 'पासवर्ड प्रविष्ट करा'}
               style={{
                 width: '100%',
                 padding: '11px 14px',
@@ -248,7 +248,7 @@ export default function AdminLogin() {
                 outline: 'none',
                 boxSizing: 'border-box'
               }}
-              required={activePersona !== 'customer'}
+              required
             />
           </div>
 

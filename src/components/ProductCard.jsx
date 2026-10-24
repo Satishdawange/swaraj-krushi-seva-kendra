@@ -3,6 +3,7 @@ import React from 'react';
 import "../CSS/productCard.css";
 
 import { Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 import {
   ArrowUpRight,
@@ -11,20 +12,20 @@ import {
 
 
 export default function ProductCard({ product }) {
+  const { isAdmin } = useAuth();
 
   return (
     <article className="product-card">
 
 
       {/* Product Image */}
-      <div className="product-card-image">
-
+      <Link to={`/products/${product.id}`} className="product-card-image" aria-label={`${product.name} उत्पादन माहिती`}>
         <img
           src={product.image}
           alt={product.name}
+          onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = '/images/sksk-icon-512.png'; }}
         />
-
-      </div>
+      </Link>
 
 
       {/* Product Information */}
@@ -62,9 +63,7 @@ export default function ProductCard({ product }) {
 
 
           {/* Price */}
-          <strong className="product-price">
-            ₹{product.price.toLocaleString('en-IN')}
-          </strong>
+          {isAdmin && <strong className="product-price">₹{product.price.toLocaleString('en-IN')}</strong>}
 
 
           {/* Product Details */}

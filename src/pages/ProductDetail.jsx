@@ -1,10 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 
-import {
-  Link,
-  useParams
-} from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 
 import {
   ArrowLeft,
@@ -14,8 +11,8 @@ import {
   Sprout
 } from '../components/Icons';
 
-import { products as fallbackProducts } from '../data/products';
 import { getProductById } from '../service/productService';
+import { useAuth } from '../context/AuthContext';
 
 import ShopProp from '../config/shopProps';
 
@@ -24,14 +21,32 @@ import ShopProp from '../config/shopProps';
 export default function ProductDetail() {
 
   const { id } = useParams();
-  const [p, setProduct] = useState(() => fallbackProducts.find((x) => String(x.id) === String(id)) || null);
+  const { isAdmin } = useAuth();
+  const [p, setProduct] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
-    getProductById(id).then((item) => { if (active && item) setProduct(item); }).catch(() => {});
+    setProduct(null);
+    setLoading(true);
+    getProductById(id)
+      .then((item) => { if (active) setProduct(item); })
+      .catch(() => { if (active) setProduct(null); })
+      .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [id]);
 
+
+  if (loading) {
+    return (
+      <section className="simple-page">
+        <div className="empty-state" role="status">
+          <div className="empty-icon">🌱</div>
+          <h3>उत्पादनाची माहिती लोड होत आहे…</h3>
+        </div>
+      </section>
+    );
+  }
 
   // Product not found
   if (!p) {
@@ -101,6 +116,7 @@ export default function ProductDetail() {
           <img
             src={p.image}
             alt={p.name}
+            onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = '/images/sksk-icon-512.png'; }}
           />
 
         </div>
@@ -138,11 +154,8 @@ export default function ProductDetail() {
 
           {/* Price */}
           <div className="product-price">
-            ₹{p.price.toLocaleString('en-IN')}
-
-            <span>
-              • {p.pack}
-            </span>
+            {isAdmin && <>₹{p.price.toLocaleString('en-IN')}<span> • </span></>}
+            <span>{p.pack}</span>
           </div>
 
 

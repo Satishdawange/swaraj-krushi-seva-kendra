@@ -37,7 +37,7 @@ import ProductCard from '../components/ProductCard';
 // =========================================================
 
 import {
-  getProducts,
+  getInventoryProducts,
   getCategories
 } from '../service/productService';
 
@@ -250,7 +250,7 @@ export default function Products() {
           categoryData
         ] = await Promise.all([
 
-          getProducts(),
+          getInventoryProducts(),
 
           getCategories()
 
@@ -287,7 +287,7 @@ export default function Products() {
         // ---------------------------------------------------
 
         const databaseCategories = categoryData
-          .map((category) => category.name)
+          .flatMap((category) => [category.name, category.nameEn].filter(Boolean))
           .filter(
             (categoryName) =>
               categoryName !== 'सर्व उत्पादने'
@@ -442,7 +442,7 @@ export default function Products() {
 
       const matchesCategory =
         cat === 'सर्व उत्पादने' ||
-        p.category === cat;
+        p.category === cat || p.categoryEn === cat;
 
 
 
@@ -476,9 +476,15 @@ export default function Products() {
 
         p.category,
 
+        p.categoryEn,
+
         p.short,
 
-        p.description
+        p.description,
+
+        p.crops,
+
+        p.usage
 
       ]
 

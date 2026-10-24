@@ -7,6 +7,7 @@ const InvoiceTemplate = forwardRef(({ bill }, ref) => {
 
   const {
     billNo = 'SKSK-DRAFT',
+    billBookBillNo = '',
     customerName = '',
     customerMobile = '',
     customerAddress = '',
@@ -149,6 +150,7 @@ const InvoiceTemplate = forwardRef(({ bill }, ref) => {
           <div>
             <span style={{ color: '#55695a' }}>बिल क्र. (Bill No): </span>
             <strong style={{ color: '#176b3a', fontSize: '13px' }}>{billNo}</strong>
+            {billBookBillNo && <div style={{ marginTop: '3px' }}><span style={{ color: '#55695a' }}>बिलबुक क्र.: </span><strong>{billBookBillNo}</strong></div>}
           </div>
           <div>
             <span style={{ color: '#55695a' }}>पेमेंट प्रकार: </span>

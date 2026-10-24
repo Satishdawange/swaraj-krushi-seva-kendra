@@ -1,5 +1,8 @@
 import { googleSheetsCategorySeed, googleSheetsProductSeed } from "../data/googleSheetsCatalog";
-import { fetchGoogleSheetRecords } from "./googleSheetsService";
+import { fetchGoogleSheetRecords, getLiveInventoryItems } from "./googleSheetsService";
+import { normalizeInventoryRow } from "../utils/sheetData";
+
+const FALLBACK_IMAGE = "/images/sksk-icon-512.png";
 
 const value = (row, ...keys) => {
   for (const key of keys) {
@@ -23,7 +26,7 @@ function normalizeProduct(row) {
     company_en: value(row, "Company_EN", "company_en", "companyEn") || "",
     price: Number(value(row, "Price", "price") || 0),
     is_active: String(value(row, "Is_Active", "is_active", "isActive") ?? true).toLowerCase() !== "false",
-    image: value(row, "Image_URL", "image", "image_url") || "",
+    image: value(row, "Image_URL", "image", "image_url") || FALLBACK_IMAGE,
     short: value(row, "Short_MR", "short", "short_description") || "",
     description: value(row, "Description_MR", "description") || "",
     usage: value(row, "Usage_MR", "usage") || "",
@@ -45,16 +48,47 @@ function normalizeCategory(row) {
 export async function getProducts() {
   try {
     const records = await fetchGoogleSheetRecords("Products");
-    if (records.length) return records.map(normalizeProduct).filter((p) => p.is_active);
+    return records.map(normalizeProduct).filter((p) => p.is_active);
   } catch (error) {
     console.warn("Could not load products from Google Sheets; using bundled catalog.", error);
   }
   return googleSheetsProductSeed.map(normalizeProduct).filter((p) => p.is_active);
 }
 
+export async function getInventoryProducts() {
+  const records = await getLiveInventoryItems();
+  return records.map((row) => {
+    const item = normalizeInventoryRow(row);
+    return {
+      ...row,
+      id: item.id,
+      name: item.name,
+      nameEn: item.nameEn,
+      name_en: item.nameEn,
+      category: item.category,
+      categoryEn: item.categoryEn,
+      category_en: item.categoryEn,
+      company: item.company,
+      companyEn: item.companyEn,
+      company_en: item.companyEn,
+      price: item.sellingPrice,
+      pack: item.pack || item.unit,
+      image: item.image || FALLBACK_IMAGE,
+      badge: item.badge,
+      short: item.short,
+      description: item.description,
+      usage: item.usage,
+      crops: item.crops,
+      is_active: item.isActive,
+    };
+  }).filter((product) => product.is_active);
+}
+
 export async function getProductById(id) {
-  const products = await getProducts();
-  return products.find((product) => product.id === String(id)) || null;
+  const products = await getInventoryProducts();
+  return products.find((product) => product.id === String(id))
+    || (await getProducts()).find((product) => product.id === String(id))
+    || null;
 }
 
 export async function getCategories() {

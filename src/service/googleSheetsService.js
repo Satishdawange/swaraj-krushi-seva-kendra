@@ -5,7 +5,7 @@ import {
 } from "../data/googleSheetsCatalog";
 import { GOOGLE_APPS_SCRIPT_CODE } from "../utils/googleAppsScriptTemplate";
 import ShopProp from "../config/shopProps";
-import { filterSheetRows } from "../utils/sheetData";
+import { filterSheetRows, normalizeInventoryRow } from "../utils/sheetData";
 import { clearDashboardMetricsCache, getDashboardMetricsCache, setDashboardMetricsCache } from "../utils/dashboardCache";
 
 export { clearDashboardMetricsCache, getDashboardMetricsCache, setDashboardMetricsCache };
@@ -20,9 +20,11 @@ const STORAGE_KEYS = {
   USERS: "sksk_users_db",
   STATS: "sksk_cached_stats",
 };
+const AUTH_TOKEN_STORAGE_KEY = "sksk_auth_session_token";
 
 const DEFAULT_GOOGLE_SHEETS_API_URL =
   "https://script.google.com/macros/s/AKfycbxFuQ3TatmFB7jrVPcmjI1RF70HN_wpPtP_Wb3XA_Cfe8kitxFuJ95boUZA5Ac3oqklug/exec";
+const REQUIRED_GOOGLE_SHEETS_API_VERSION = "sksk-customer-portal-v9";
 
 // Default initial inventory seeded from products.js
 function getInitialInventory() {
@@ -128,6 +130,10 @@ export async function fetchGoogleSheetRecords(sheetName) {
   if (!url) throw new Error("Google Apps Script Web App URL is not configured.");
 
   const query = new URLSearchParams({ action: "getAll", sheetName });
+  if (sheetName === "Bills" || sheetName === "Customers" || sheetName === "Inventory" || sheetName === "Products") {
+    const token = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+    if (token) query.set("token", token);
+  }
   const response = await fetch(`${url}${url.includes("?") ? "&" : "?"}${query}`, {
     method: "GET",
     mode: "cors",
@@ -188,6 +194,31 @@ export async function logoutGoogleSheetsSession(token) {
   }
 }
 
+export async function changeGoogleSheetsPassword(token, currentPassword, newPassword) {
+  await requireGoogleSheetsApiVersion();
+  const result = await sendGoogleSheetsAuthAction("changePassword", {
+    token,
+    currentPassword,
+    newPassword,
+  });
+  if (!result.success) {
+    if (/invalid action/i.test(result.error || "")) {
+      throw new Error("Google Apps Script जुनी आवृत्ती आहे. Password change साठी updated script deploy करा.");
+    }
+    throw new Error(result.error || "पासवर्ड बदलता आला नाही.");
+  }
+  return result;
+}
+
+export async function fetchMyCustomerBills() {
+  const token = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+  if (!token) throw new Error("ग्राहक सत्र पुन्हा सुरू करण्यासाठी लॉग इन करा.");
+  await requireGoogleSheetsApiVersion();
+  const result = await sendGoogleSheetsAuthAction("getMyBills", { token });
+  if (!result.success) throw new Error(result.error || "तुमची बिले लोड करता आली नाहीत.");
+  return Array.isArray(result.data) ? result.data : [];
+}
+
 export async function sendGoogleSheetsAction(action, data) {
   const url = getGoogleSheetsConfig().webAppUrl.trim();
   if (!url) throw new Error("Google Apps Script Web App URL is not configured.");
@@ -199,6 +230,36 @@ export async function sendGoogleSheetsAction(action, data) {
     body: JSON.stringify({ action, data }),
   });
   return { success: true, sent: true };
+}
+
+async function requireGoogleSheetsApiVersion() {
+  const url = getGoogleSheetsConfig().webAppUrl.trim();
+  if (!url) throw new Error("Google Apps Script Web App URL is not configured.");
+  const pingUrl = `${url}${url.includes("?") ? "&" : "?"}action=ping`;
+  const response = await fetch(pingUrl, { method: "GET", mode: "cors", cache: "no-store" });
+  if (!response.ok) throw new Error(`Google Sheets version check failed (${response.status}).`);
+  const result = await response.json();
+  if (result.apiVersion !== REQUIRED_GOOGLE_SHEETS_API_VERSION) {
+    throw new Error("Google Apps Script जुनी आवृत्ती आहे. Inventory आणि customer accounts साठी updated script पुन्हा deploy करा.");
+  }
+}
+
+async function sendGoogleSheetsActionForResult(action, data) {
+  const url = getGoogleSheetsConfig().webAppUrl.trim();
+  if (!url) throw new Error("Google Apps Script Web App URL is not configured.");
+  await requireGoogleSheetsApiVersion();
+
+  const response = await fetch(url, {
+    method: "POST",
+    mode: "cors",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ action, data }),
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`Google Sheets request failed (${response.status}).`);
+  const result = await response.json();
+  if (!result.success) throw new Error(result.error || `Google Sheets could not complete ${action}.`);
+  return result;
 }
 
 export async function testGoogleSheetsConnection(webAppUrl) {
@@ -328,6 +389,10 @@ export async function fetchRecentRecords(
         search: search || "",
         category: category || "",
       });
+      if (sheetName === "Bills" || sheetName === "Customers" || sheetName === "Inventory" || sheetName === "Products") {
+        const token = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+        if (token) qParams.set("token", token);
+      }
 
       const res = await fetch(
         `${config.webAppUrl}${config.webAppUrl.includes("?") ? "&" : "?"}action=getRecent&${qParams.toString()}`,
@@ -412,16 +477,33 @@ export function getAllInventoryItems() {
   return readStorage(STORAGE_KEYS.INVENTORY, getInitialInventory());
 }
 
+export async function getLiveInventoryItems({ strict = false } = {}) {
+  try {
+    const rows = await fetchGoogleSheetRecords("Inventory");
+    const items = rows.map(normalizeInventoryRow);
+    writeStorage(STORAGE_KEYS.INVENTORY, items);
+    return items;
+  } catch (error) {
+    if (strict) throw error;
+    console.warn("Could not load live inventory; using cached inventory.", error);
+    return getAllInventoryItems().map(normalizeInventoryRow);
+  }
+}
+
 export function saveInventoryItemLocal(item) {
   const list = getAllInventoryItems();
-  const id = item.id || `inv-${Date.now()}`;
+  const id = item.id || item.ID || item.Product_ID || `inv-${Date.now()}`;
   const index = list.findIndex(
-    (i) => i.id === id || i.name?.toLowerCase() === item.name?.toLowerCase(),
+    (i) => i.id === id || i.ID === id || (
+      i.name?.trim().toLowerCase() === String(item.name || "").trim().toLowerCase() &&
+      String(item.name || "").trim()
+    ),
   );
 
   const fullItem = {
     ...item,
     id,
+    ID: id,
     purchasePrice: Number(item.purchasePrice || 0),
     sellingPrice: Number(item.sellingPrice || 0),
     availableStock: Number(item.availableStock || 0),
@@ -437,10 +519,20 @@ export function saveInventoryItemLocal(item) {
 
   writeStorage(STORAGE_KEYS.INVENTORY, list);
 
-  // Sync to Google Sheets if connected
-  syncItemToSheets("saveInventoryItem", fullItem);
-
   return fullItem;
+}
+
+export async function saveInventoryItem(item) {
+  const id = item.id || item.ID || item.Product_ID || `inv-${Date.now()}`;
+  const payload = { ...item, id, ID: id, updatedAt: new Date().toISOString() };
+  const config = getGoogleSheetsConfig();
+  let isLive = false;
+  if (config.webAppUrl.trim()) {
+    await sendGoogleSheetsActionForResult("saveInventoryItem", payload);
+    isLive = true;
+  }
+  const saved = saveInventoryItemLocal(payload);
+  return { item: saved, isLive };
 }
 
 export function adjustInventoryStock(
@@ -464,7 +556,7 @@ export function adjustInventoryStock(
 }
 
 // Record Bulk Purchase Lot & Update Stock
-export function recordBulkPurchaseLot(lotData) {
+export async function recordBulkPurchaseLot(lotData) {
   const lots = readStorage(STORAGE_KEYS.PURCHASES, []);
   const lotId = lotData.lotId || `LOT-${Date.now()}`;
   const qty = Number(lotData.bulkQty || 1);
@@ -479,6 +571,7 @@ export function recordBulkPurchaseLot(lotData) {
     category: lotData.category || "इतर",
     subcategory: lotData.subcategory || "",
     productName: lotData.productName || "",
+    productNameEn: lotData.productNameEn || "",
     bulkQty: qty,
     unit: lotData.unit || "नग",
     totalCost,
@@ -488,49 +581,70 @@ export function recordBulkPurchaseLot(lotData) {
     createdAt: new Date().toISOString(),
   };
 
+  const inventory = getAllInventoryItems();
+  const requestedItem = lotData.inventoryItem || {};
+  const selectedId = String(lotData.inventoryId || requestedItem.id || requestedItem.ID || '');
+  const productName = lotRecord.productName.trim().toLowerCase();
+  const productNameEn = lotRecord.productNameEn.trim().toLowerCase();
+  const existing = inventory.find((item) =>
+    (selectedId && String(item.id || item.ID) === selectedId) ||
+    [item.name, item.nameEn].some((name) => {
+      const candidate = String(name || '').trim().toLowerCase();
+      return candidate && (candidate === productName || (productNameEn && candidate === productNameEn));
+    })
+  );
+  const itemId = selectedId || existing?.id || existing?.ID || `INV-${Date.now()}`;
+  const nextStock = Number(existing?.availableStock ?? existing?.Available_Stock ?? requestedItem.availableStock ?? requestedItem.Available_Stock ?? 0) + qty;
+  const inventoryItem = {
+    ...existing,
+    ...requestedItem,
+    id: itemId,
+    ID: itemId,
+    name: lotRecord.productName,
+    Name: lotRecord.productName,
+    nameEn: lotRecord.productNameEn,
+    Name_EN: lotRecord.productNameEn,
+    category: lotRecord.category,
+    Category: lotRecord.category,
+    categoryEn: lotData.categoryEn || requestedItem.categoryEn || requestedItem.Category_EN || '',
+    Category_EN: lotData.categoryEn || requestedItem.categoryEn || requestedItem.Category_EN || '',
+    subcategory: lotRecord.subcategory,
+    Subcategory: lotRecord.subcategory,
+    unit: lotRecord.unit,
+    Unit: lotRecord.unit,
+    purchasePrice: unitCost,
+    Purchase_Price: unitCost,
+    sellingPrice: lotRecord.sellingPrice,
+    Selling_Price: lotRecord.sellingPrice,
+    availableStock: nextStock,
+    Available_Stock: nextStock,
+    minAlertQty: Number(lotData.minAlertQty ?? requestedItem.minAlertQty ?? requestedItem.Min_Alert_Qty ?? 10),
+    Min_Alert_Qty: Number(lotData.minAlertQty ?? requestedItem.minAlertQty ?? requestedItem.Min_Alert_Qty ?? 10),
+    updatedAt: new Date().toISOString(),
+    Updated_At: new Date().toISOString(),
+  };
+
+  const config = getGoogleSheetsConfig();
+  let isLive = false;
+  if (config.webAppUrl.trim()) {
+    await sendGoogleSheetsActionForResult("savePurchaseLot", { ...lotRecord, inventoryId: itemId, inventoryItem });
+    isLive = true;
+  }
+
   lots.unshift(lotRecord);
   writeStorage(STORAGE_KEYS.PURCHASES, lots);
-
-  // Increment Inventory stock
-  const inventory = getAllInventoryItems();
-  const existing = inventory.find(
-    (i) =>
-      i.name?.trim().toLowerCase() ===
-      lotRecord.productName.trim().toLowerCase(),
-  );
-
-  if (existing) {
-    existing.availableStock = Number(existing.availableStock || 0) + qty;
-    existing.purchasePrice = unitCost;
-    if (lotRecord.sellingPrice) existing.sellingPrice = lotRecord.sellingPrice;
-    existing.updatedAt = new Date().toISOString();
-  } else {
-    inventory.unshift({
-      id: `inv-${Date.now()}`,
-      name: lotRecord.productName,
-      category: lotRecord.category,
-      subcategory: lotRecord.subcategory,
-      company: lotRecord.supplier,
-      unit: lotRecord.unit,
-      purchasePrice: unitCost,
-      sellingPrice: lotRecord.sellingPrice,
-      availableStock: qty,
-      minAlertQty: 10,
-      updatedAt: new Date().toISOString(),
-    });
-  }
+  const index = inventory.findIndex((item) => String(item.id || item.ID) === itemId);
+  if (index >= 0) inventory[index] = { ...inventory[index], ...inventoryItem };
+  else inventory.unshift(inventoryItem);
   writeStorage(STORAGE_KEYS.INVENTORY, inventory);
 
-  // Sync to sheets
-  syncItemToSheets("savePurchaseLot", lotRecord);
-
-  return lotRecord;
+  return { ...lotRecord, inventoryItem, isLive };
 }
 
 // -----------------------------------------------------------------------------
 // Billing System with Live Inventory Deduction & Khata Updates
 // -----------------------------------------------------------------------------
-export function saveBillWithInventoryDeduction(billData) {
+export async function saveBillWithInventoryDeduction(billData) {
   const bills = readStorage(STORAGE_KEYS.BILLS, []);
   const billNo = billData.billNo || `SKSK-${Date.now()}`;
 
@@ -553,6 +667,13 @@ export function saveBillWithInventoryDeduction(billData) {
     createdAt: billData.createdAt || new Date().toISOString(),
     billDate: billData.billDate || new Date().toISOString().split("T")[0],
   };
+
+  const config = getGoogleSheetsConfig();
+  let isLive = false;
+  if (config.webAppUrl.trim()) {
+    await sendGoogleSheetsActionForResult("saveBill", newBill);
+    isLive = true;
+  }
 
   bills.unshift(newBill);
   writeStorage(STORAGE_KEYS.BILLS, bills);
@@ -612,10 +733,7 @@ export function saveBillWithInventoryDeduction(billData) {
     writeStorage(STORAGE_KEYS.CUSTOMERS, customers);
   }
 
-  // 3. Sync to Google Sheets if connected
-  syncItemToSheets("saveBill", newBill);
-
-  return newBill;
+  return { ...newBill, isLive };
 }
 
 // -----------------------------------------------------------------------------
