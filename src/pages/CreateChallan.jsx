@@ -506,6 +506,24 @@ export default function CreateChallan() {
           <button
             type="button"
             disabled={isProcessing}
+            onClick={() => handleSaveAndAction('save')}
+            style={{
+              background: '#e8f5e9',
+              color: '#176b3a',
+              border: '1.5px solid #176b3a',
+              borderRadius: '10px',
+              padding: '12px 20px',
+              fontSize: '14px',
+              fontWeight: '700',
+              cursor: isProcessing ? 'not-allowed' : 'pointer'
+            }}
+          >
+            💾 फक्त सेव्ह करा
+          </button>
+
+          <button
+            type="button"
+            disabled={isProcessing}
             onClick={() => handleSaveAndAction('print')}
             style={{
               flex: 1,
@@ -583,4 +601,3 @@ export default function CreateChallan() {
     </div>
   );
 }
-

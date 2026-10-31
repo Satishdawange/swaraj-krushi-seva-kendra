@@ -106,10 +106,19 @@ Current shop inventory (use only when asked about product availability; do not p
 }
 
 // -----------------------------------------------------------------------------
-// Fallback: Gemini API
+// Fallback: Gemini API  (with model fallback + retry on overload)
 // -----------------------------------------------------------------------------
+// Models for this API key — lite-latest confirmed fastest
+const GEMINI_MODELS = [
+  'gemini-flash-lite-latest',  // fastest and confirmed working
+  'gemini-flash-latest',       // standard flash
+  'gemini-3.8-flash',          // newest flash
+  'gemini-3.7-flash',          // fallback
+  'gemini-3.5-flash',          // fallback
+];
+
 async function callGemini(promptText, geminiKey, history = [], image = null) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${geminiKey}`;
+  const systemText = 'You are a helpful agricultural assistant for farmers in Maharashtra, India. Reply in the user language (Marathi, Hindi, or English) and answer directly without forcing a fixed intake flow. Ask only necessary follow-up questions. Never invent pesticide or fertilizer doses; prioritize label directions and safe handling. State uncertainty clearly. Answer any question the farmer asks.';
   const contents = (Array.isArray(history) ? history.slice(-6) : []).map(message => ({
     role: message.sender === 'bot' ? 'model' : 'user',
     parts: [{ text: message.text || '' }]
@@ -123,25 +132,62 @@ async function callGemini(promptText, geminiKey, history = [], image = null) {
   }
   contents.push({ role: 'user', parts: currentParts });
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      system_instruction: { parts: [{ text: 'You are a helpful agricultural assistant for farmers in Maharashtra, India. Reply in the user language and answer directly without forcing a fixed intake flow. Ask only necessary follow-up questions. Never invent pesticide or fertilizer doses; prioritize label directions and safe handling. State uncertainty.' }] },
-      contents,
-      generationConfig: { temperature: 0.4, maxOutputTokens: 1200 }
-    })
-  });
+  let lastError;
+  for (const model of GEMINI_MODELS) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout per model
+      let res;
+      try {
+        res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: systemText }] },
+            contents,
+            generationConfig: { temperature: 0.4, maxOutputTokens: 1200 }
+          })
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({}));
-    throw new Error(error.error?.message || `Gemini API error (${res.status})`);
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        const msg = error.error?.message || `Gemini API error (${res.status})`;
+        if (res.status === 503 || res.status === 429 ||
+            msg.toLowerCase().includes('demand') ||
+            msg.toLowerCase().includes('overload') ||
+            msg.toLowerCase().includes('quota') ||
+            msg.toLowerCase().includes('unavailable')) {
+          console.warn(`Model ${model} unavailable (${res.status}): ${msg} — trying next...`);
+          lastError = new Error(msg);
+          continue;
+        }
+        throw new Error(msg);
+      }
+
+      const data = await res.json();
+      const answer = data.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('').trim();
+      if (!answer) { lastError = new Error('Empty response'); continue; }
+      console.log(`Gemini responded via model: ${model}`);
+      return answer;
+    } catch (e) {
+      lastError = e;
+      const msg = (e.message || '').toLowerCase();
+      const isRetryable = msg.includes('demand') || msg.includes('overload') || msg.includes('quota') ||
+          msg.includes('fetch') || msg.includes('network') || msg.includes('unavailable') ||
+          e.name === 'AbortError' || msg.includes('abort') || msg.includes('timeout');
+      if (isRetryable) {
+        console.warn(`Model ${model} failed (${e.name || 'Error'}): ${e.message} — trying next...`);
+        continue;
+      }
+      throw e;
+    }
   }
-
-  const data = await res.json();
-  const answer = data.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('').trim();
-  if (!answer) throw new Error('The AI returned an empty response. Please try again.');
-  return answer;
+  throw lastError || new Error('All Gemini models are currently unavailable. Please try again later.');
 }
 // -----------------------------------------------------------------------------
 // Master Agri Advisor Function
@@ -175,9 +221,10 @@ export async function askAgriAdvisor(promptText, history = [], options = {}) {
       return await callGemini(promptText, geminiKey, history, options.image);
     } catch (err) {
       console.error('Gemini call failed:', err);
-      throw err;
+      return `🌱 माफ करा, AI सेवा तात्पुरती व्यस्त आहे.\n\nकृपया थोड्या वेळाने पुन्हा प्रयत्न करा.\n\n📞 तात्काळ मदतीसाठी निलेश दवंगे (+91 8459568940) यांच्याशी संपर्क साधा.\n\n💡 आपला प्रश्न परत टाईप केल्यास मी पुन्हा प्रयत्न करेन!`;
     }
   }
 
-  throw new Error('AI is not configured. Add an OpenAI API key in AI settings or configure VITE_GEMINI_API_KEY, then try again.');
+  // 4. No AI configured
+  return `🌱 AI सेवा सध्या उपलब्ध नाही.\n\nSettings मध्ये जाऊन API Key टाका किंवा निलेश दवंगे (+91 8459568940) यांच्याशी संपर्क साधा.`;
 }

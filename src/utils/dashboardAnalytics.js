@@ -15,10 +15,23 @@ export function buildDashboardAnalytics({ metrics = {}, period = "month", fromMo
   end.setHours(23, 59, 59, 999);
 
   const inventory = metrics.inventory || [];
+  const categoryByProductRef = new Map();
+  inventory.forEach((item, index) => {
+    const category = item.category || "इतर";
+    [item.id, item.name, item.nameEn, item.name_en].forEach((ref) => {
+      const key = String(ref || "").trim().toLowerCase();
+      if (key && !categoryByProductRef.has(key)) categoryByProductRef.set(key, { category, index });
+    });
+  });
   const categoryForItem = (line) => {
     if (line.category || line.Category) return line.category || line.Category;
-    const refs = [line.productId, line.product_id, line.productName, line.name, line.id].filter(Boolean).map((ref) => String(ref).trim().toLowerCase());
-    return inventory.find((item) => refs.includes(String(item.id || "").trim().toLowerCase()) || refs.includes(String(item.name || "").trim().toLowerCase()) || refs.includes(String(item.nameEn || item.name_en || "").trim().toLowerCase()))?.category || "इतर";
+    const refs = [line.productId, line.product_id, line.productName, line.name, line.id];
+    let match = null;
+    for (const ref of refs) {
+      const candidate = categoryByProductRef.get(String(ref || "").trim().toLowerCase());
+      if (candidate && (!match || candidate.index < match.index)) match = candidate;
+    }
+    return match?.category || "इतर";
   };
   const lineAmount = (line) => Number(line.totalAmount || line.total || line.lineTotal || line.amount || (Number(line.quantity || line.qty || 0) * Number(line.price || line.sellingPrice || line.rate || 0)) || 0);
   const byCategory = {};

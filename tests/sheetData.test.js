@@ -27,8 +27,84 @@ test("Apps Script template includes valid revocable session endpoints", () => {
   assert.match(GOOGLE_APPS_SCRIPT_CODE, /function publicInventoryRecord/);
   assert.match(GOOGLE_APPS_SCRIPT_CODE, /function publicProductRecord/);
   assert.match(GOOGLE_APPS_SCRIPT_CODE, /function inventoryWithoutPricingRecord/);
-  assert.match(GOOGLE_APPS_SCRIPT_CODE, /sksk-customer-portal-v9/);
+  assert.match(GOOGLE_APPS_SCRIPT_CODE, /sksk-customer-portal-v10/);
+  assert.match(GOOGLE_APPS_SCRIPT_CODE, /case 'getDashboardMetrics'/);
+  assert.match(GOOGLE_APPS_SCRIPT_CODE, /Bills_\[0-9\]\{4\}_\[0-9\]\{2\}/);
+  assert.match(GOOGLE_APPS_SCRIPT_CODE, /const recentNeedsStaff = isBillsSheetName\(recentSheet\)/);
+  const isBillsSheetName = new Function(`${GOOGLE_APPS_SCRIPT_CODE}; return isBillsSheetName;`)();
+  assert.equal(isBillsSheetName("Bills_2026_10"), true);
+  assert.equal(isBillsSheetName("Inventory"), false);
   assert.match(GOOGLE_APPS_SCRIPT_CODE, /Users records are not available through the public API/);
+});
+
+test("dashboard endpoint reads the selected monthly tab and paginates filtered bills", () => {
+  const createSheet = (name, values) => ({
+    getName: () => name,
+    getLastRow: () => values.length,
+    getLastColumn: () => values[0]?.length || 0,
+    getRange: (row, column, rowCount = 1, columnCount = 1) => ({
+      getValues: () => values.slice(row - 1, row - 1 + rowCount)
+        .map((line) => line.slice(column - 1, column - 1 + columnCount)),
+    }),
+  });
+  const sheets = [
+    createSheet("Bills_2026_10", [
+      ["Bill_No", "Date", "Customer_Name", "Total_Amount", "Paid_Amount", "Balance_Amount", "Items_JSON"],
+      ["B-1", "2026-10-26", "Customer A", 100, 50, 50, JSON.stringify([{ productId: "p-1", qty: 1, price: 100 }])],
+      ["B-2", "2026-10-26", "Customer B", 60, 60, 0, JSON.stringify([{ category: "Seeds", qty: 1, price: 60 }])],
+      ["B-4", "2026-10-26", "Customer D", 20, 20, 0, JSON.stringify([{ productId: "p-1", qty: 1, price: 20 }])],
+      ["B-3", "2026-10-27", "Customer C", 40, 0, 40, JSON.stringify([{ productId: "p-1", qty: 1, price: 40 }])],
+    ]),
+    createSheet("Inventory", [
+      ["ID", "Name", "Category", "Purchase_Price", "Available_Stock", "Min_Alert_Qty"],
+      ["p-1", "Fertilizer", "Fertilizers", 10, 1, 5],
+    ]),
+    createSheet("Customers", [
+      ["Mobile", "Customer_Name", "Total_Purchased", "Balance_Udhaari"],
+      ["9999999999", "Customer A", 100, 50],
+    ]),
+    createSheet("Challans", [["Challan_No", "Date"], ["C-1", "2026-10-26"]]),
+  ];
+  const spreadsheet = {
+    getSheets: () => sheets,
+    getSheetByName: (name) => sheets.find((sheet) => sheet.getName() === name) || null,
+  };
+  const utilities = {
+    formatDate: (date, _timezone, format) => format === "yyyy-MM"
+      ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
+      : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`,
+  };
+  const getMetrics = new Function("Utilities", "Session", `${GOOGLE_APPS_SCRIPT_CODE}; return getDashboardMetricsForRange;`)(
+    utilities,
+    { getScriptTimeZone: () => "UTC" },
+  );
+
+  const result = getMetrics(spreadsheet, {
+    startDate: "2026-10-26",
+    endDate: "2026-10-26",
+    category: "Fertilizers",
+    search: "",
+    status: "all",
+    page: "1",
+    limit: "1",
+  });
+
+  assert.equal(result.data.totalBills, 2);
+  assert.deepEqual(result.data.selectedTotals, { sales: 120, paid: 70, due: 50 });
+  assert.equal(result.data.bills.length, 1);
+  assert.equal(result.data.bills[0].billNo, "B-1");
+  assert.deepEqual(result.data.billPagination, { page: 1, limit: 1, total: 2, totalPages: 2 });
+  const secondPage = getMetrics(spreadsheet, {
+    startDate: "2026-10-26",
+    endDate: "2026-10-26",
+    category: "Fertilizers",
+    search: "Customer D",
+    status: "all",
+    page: "1",
+    limit: "1",
+  });
+  assert.equal(secondPage.data.billPagination.total, 1);
+  assert.equal(secondPage.data.bills[0].billNo, "B-4");
 });
 
 test("dashboard cache is isolated by account and can be cleared", () => {
@@ -40,8 +116,10 @@ test("dashboard cache is isolated by account and can be cleared", () => {
     removeItem: (key) => values.delete(key),
   };
   try {
+    values.set("sksk_dashboard_metrics:admin-1", JSON.stringify({ metrics: { stale: true } }));
     const metrics = { totalSales: 1200, pendingKhata: [] };
     setDashboardMetricsCache("admin-1", metrics);
+    assert.equal(values.has("sksk_dashboard_metrics:admin-1"), false);
     assert.deepEqual(getDashboardMetricsCache("admin-1").metrics, metrics);
     assert.equal(getDashboardMetricsCache("admin-2"), null);
     clearDashboardMetricsCache("admin-1");
@@ -195,6 +273,33 @@ test("filters dashboard sales by date range and product category", () => {
   assert.deepEqual(result.selectedTotals, { sales: 200, paid: 100, due: 100 });
   assert.deepEqual(result.categoryData, [["Fertilizers", 200], ["Seeds", 100]]);
   assert.equal(result.chartData.find((point) => point.label === "2025-03-15").value, 200);
+});
+
+test("calculates analytics accurately with 10,000 inventory items and bills", () => {
+  const inventory = Array.from({ length: 10_000 }, (_, index) => ({
+    id: `product-${index}`,
+    name: `Product ${index}`,
+    nameEn: `Item ${index}`,
+    category: index === 9_999 ? "Fertilizers" : "Other",
+  }));
+  const bills = Array.from({ length: 10_000 }, (_, index) => ({
+    billDate: "2025-03-15",
+    totalAmount: 100,
+    paidAmount: 75,
+    balanceAmount: 25,
+    items: [{ productId: "product-9999", qty: 1, price: 100 }],
+  }));
+
+  const result = buildDashboardAnalytics({
+    now: new Date(2025, 2, 15, 12),
+    period: "month",
+    categoryFilter: "Fertilizers",
+    metrics: { inventory, bills },
+  });
+
+  assert.equal(result.filteredBills.length, 10_000);
+  assert.deepEqual(result.selectedTotals, { sales: 1_000_000, paid: 750_000, due: 250_000 });
+  assert.deepEqual(result.categoryData, [["Fertilizers", 1_000_000]]);
 });
 
 test("custom dashboard month range includes both endpoint months", () => {

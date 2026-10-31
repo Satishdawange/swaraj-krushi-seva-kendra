@@ -48,7 +48,7 @@ export default function AiAgriAdvisor() {
     {
       id: 1,
       sender: 'bot',
-      text: `🌱 राम राम शेतकरी मित्रांनो! 🙏\n\nमी स्वराज कृषी सेवा केंद्राचा अधिकृत AI कृषी मित्र आहे (ChatGPT Powered).\nआपल्या पिकावरील रोग, अळी, किंवा खत व्यवस्थापनाविषयी थेट विचारा.\n\n• पिकाचा प्रश्न टाईप करा, बोला (🎙️) किंवा फोटो (📷) पाठवा.\n• आम्ही सर्व औषधे घरपोच डिलिव्हरी (Home Delivery) देखील करतो!\n\n💡 तुम्ही आधीच स्वराज कृषी सेवा केंद्रातून औषध खरेदी केले आहे का?\nवापर कसा करावा किंवा पाण्याचे प्रमाण आठवत नसेल तर खाली तुमचा १०-अंकी मोबाईल नंबर टाका — मी खरेदीचे बिल व डोस लगेच समजावून सांगेन!`,
+      text: `🌱 राम राम शेतकरी मित्रांनो! 🙏\n\nमी स्वराज कृषी सेवा केंद्राचा अधिकृत AI कृषी सल्लागार आहे.\nआपल्या पिकावरील रोग, अळी, किंवा खत व्यवस्थापनाविषयी थेट विचारा.\n\n• पिकाचा प्रश्न टाईप करा, बोला (🎙️) किंवा फोटो (📷) पाठवा.\n💡 तुम्ही आधीच स्वराज कृषी सेवा केंद्रातून औषध खरेदी केले आहे का?\nवापर कसा करावा किंवा पाण्याचे प्रमाण आठवत नसेल तर खाली तुमचा १०-अंकी मोबाईल नंबर टाका — मी खरेदीचे बिल व डोस लगेच समजावून सांगेन!`,
       image: null
     }
   ]);
@@ -60,6 +60,7 @@ export default function AiAgriAdvisor() {
 
   const openAiKey = getOpenAIKey();
   const selectedModel = getSelectedAiModel();
+  const [aiServiceOnline, setAiServiceOnline] = useState(null); // null=checking, true=online, false=offline
 
   const messagesContainerRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -100,6 +101,49 @@ export default function AiAgriAdvisor() {
       recognition.onend = () => setIsRecording(false);
       recognitionRef.current = recognition;
     }
+  }, []);
+
+  // Check AI service availability on mount
+  useEffect(() => {
+    let cancelled = false;
+    const geminiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    const hasKey = Boolean(openAiKey?.trim().length > 10 || geminiKey?.trim().length > 10);
+    if (!hasKey) {
+      setAiServiceOnline(false);
+      console.error('[AI Krushi Mitr] No API key configured. Set VITE_GEMINI_API_KEY in .env.local');
+      return;
+    }
+    // Quick ping — small request to check reachability
+    const model = 'gemini-flash-lite-latest';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 15000);
+    fetch(url, {
+      method: 'POST',
+      signal: ctrl.signal,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'ping' }] }], generationConfig: { maxOutputTokens: 5 } })
+    })
+      .then(r => {
+        clearTimeout(t);
+        if (!cancelled) {
+          if (r.ok || r.status === 400) { // 400 = bad request but service is reachable
+            setAiServiceOnline(true);
+          } else {
+            setAiServiceOnline(false);
+            console.error(`[AI Krushi Mitr] Service check failed: HTTP ${r.status}`);
+          }
+        }
+      })
+      .catch(err => {
+        clearTimeout(t);
+        if (!cancelled) {
+          setAiServiceOnline(false);
+          console.error('[AI Krushi Mitr] Service unreachable:', err.message);
+        }
+      });
+    return () => { cancelled = true; clearTimeout(t); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleToggleVoice = () => {
@@ -197,12 +241,7 @@ export default function AiAgriAdvisor() {
     'What should I know before spraying?'
   ];
   const suggestions = getSuggestions();
-  const aiProviderLabel = openAiKey
-    ? `OpenAI (${selectedModel})`
-    : import.meta.env.VITE_GEMINI_API_KEY
-      ? 'Gemini'
-      : 'API key needed';
-  const aiIsConfigured = Boolean(openAiKey || import.meta.env.VITE_GEMINI_API_KEY);
+
 
   return (
     <div className="ai-advisor-card" style={{ position: 'relative' }}>
@@ -212,18 +251,19 @@ export default function AiAgriAdvisor() {
           <div className="ai-avatar-badge">🌱</div>
           <div className="ai-title-text">
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h3 style={{ margin: 0, fontSize: '16px' }}>AI कृषी मित्र (ChatGPT)</h3>
-              <span style={{
-                background: aiIsConfigured ? '#e6f4ea' : '#fef7e0',
-                color: aiIsConfigured ? '#137333' : '#b06000',
-                fontSize: '10px',
-                fontWeight: '700',
-                padding: '2px 8px',
-                borderRadius: '12px',
-                border: aiIsConfigured ? '1px solid #ceead6' : '1px solid #feefc3'
-              }}>
-                {aiProviderLabel}
-              </span>
+              <h3 style={{ margin: 0, fontSize: '16px' }}>AI कृषी मित्र</h3>
+              <span
+                title={aiServiceOnline === null ? 'तपासत आहे...' : aiServiceOnline ? 'AI सेवा चालू आहे' : 'AI सेवा बंद आहे'}
+                style={{
+                  display: 'inline-block',
+                  width: '10px',
+                  height: '10px',
+                  borderRadius: '50%',
+                  flexShrink: 0,
+                  background: aiServiceOnline === null ? '#fbbc04' : aiServiceOnline ? '#34a853' : '#ea4335',
+                  boxShadow: aiServiceOnline === true ? '0 0 0 2px #ceead6' : aiServiceOnline === false ? '0 0 0 2px #fcd0cf' : '0 0 0 2px #fde9a2',
+                }}
+              />
             </div>
             <p style={{ margin: 0, fontSize: '12px', color: '#5f6368' }}>
               पिकांवरील रोग, खते व औषधांबद्दल अचूक सल्ला

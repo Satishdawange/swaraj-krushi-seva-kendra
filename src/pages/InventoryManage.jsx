@@ -58,6 +58,8 @@ export default function InventoryManage() {
   const [message, setMessage] = useState('');
   const [messageTone, setMessageTone] = useState('success');
   const [suggestionField, setSuggestionField] = useState('');
+  const [editMode, setEditMode] = useState('reference');
+  const [activeField, setActiveField] = useState('');
 
   const loadData = async () => {
     setLoading(true);
@@ -95,6 +97,8 @@ export default function InventoryManage() {
     const next = Object.fromEntries(headers.map((header) => [header, normalizeKey(header) === 'isactive' ? true : '']));
     setForm(next);
     setLockedId('');
+    setEditMode('reference');
+    setActiveField('');
     setMessage('');
     setMessageTone('success');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -105,6 +109,8 @@ export default function InventoryManage() {
     const sheetValues = Object.fromEntries(headers.map((header) => [header, pickValue(item, header)]));
     setForm({ ...item, ...sheetValues, ID: id });
     setLockedId(id);
+    setEditMode('view');
+    setActiveField('');
     setMessage('');
     setMessageTone('success');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -118,11 +124,18 @@ export default function InventoryManage() {
     const sheetValues = Object.fromEntries(headers.map((header) => [header, pickValue(selected, header)]));
     setForm({ ...selected, ...sheetValues, ID: id });
     setLockedId(id);
+    setEditMode('view');
+    setActiveField('');
     setMessage('');
     setMessageTone('success');
   }, [routeItemId, inventory, loading, headers]);
 
   const changeField = (header, value) => {
+    if (editMode === 'single' && lockedId) {
+      setForm((current) => ({ ...current, [header]: value }));
+      return;
+    }
+
     const pair = pairedFields(header);
     const sourceRows = normalizeKey(header).includes('category') ? categories : inventory;
     const match = pair && sourceRows.find((row) => {
@@ -199,6 +212,8 @@ export default function InventoryManage() {
       setInventory((current) => [saved, ...current.filter((item) => String(item.id || item.ID) !== String(id))]);
       setForm({ ...saved });
       setLockedId(String(id));
+      setEditMode('view');
+      setActiveField('');
       setMessageTone(result.isLive ? 'success' : 'error');
       setMessage(result.isLive ? 'इन्व्हेंटरी Google Sheet मध्ये जतन झाली.' : 'Google Sheets URL उपलब्ध नाही; नोंद फक्त या डिव्हाइसवर जतन झाली.');
     } catch (error) {
@@ -226,7 +241,13 @@ export default function InventoryManage() {
             <span>{lockedId ? 'उत्पादन संपादन' : 'नवीन उत्पादन'}</span>
             <small>{lockedId ? `ID: ${lockedId}` : 'मराठी आणि English नाव भरता येतील'}</small>
           </div>
-          {lockedId && <button type="button" className="inventory-reset-button" onClick={beginNew}>＋ नवीन नोंद</button>}
+          <div className="inventory-editor-title-actions">
+            {lockedId && <>
+              <button type="button" className="inventory-reset-button" onClick={() => { setEditMode('single'); setActiveField(''); }}>एक फील्ड संपादित करा</button>
+              <button type="button" className="inventory-reset-button" onClick={() => { setEditMode('reference'); setActiveField(''); }}>रेफरन्ससह संपादन</button>
+              <button type="button" className="inventory-reset-button" onClick={beginNew}>＋ नवीन नोंद</button>
+            </>}
+          </div>
         </div>
         {message && <div className={`inventory-feedback ${messageTone}`} role={messageTone === 'error' ? 'alert' : 'status'}>{message}</div>}
         <div className="inventory-fields-grid">
@@ -237,24 +258,37 @@ export default function InventoryManage() {
             const fieldSuggestions = valuesFor(header)
               .filter((option) => String(option).toLowerCase().includes(String(value).trim().toLowerCase()))
               .slice(0, 8);
+            const isEditable = !lockedId || editMode === 'reference' || (editMode === 'single' && activeField === header);
             if (key === 'isactive') {
               return <label className="inventory-active-field" key={header}>
-                <input type="checkbox" checked={String(value).toLowerCase() !== 'false'} onChange={(event) => setForm((current) => ({ ...current, [header]: event.target.checked }))} />
+                <input type="checkbox" checked={String(value).toLowerCase() !== 'false'} disabled={saving} onChange={(event) => setForm((current) => ({ ...current, [header]: event.target.checked }))} />
                 <span>{labelFor(header)}</span>
               </label>;
             }
-            return <label className={`inventory-field ${textareaFields.has(key) ? 'inventory-field-wide' : ''}`} key={header}>
-              <span>{labelFor(header)}</span>
+            const fieldId = `inventory-field-${index}`;
+            return <div className={`inventory-field ${textareaFields.has(key) ? 'inventory-field-wide' : ''}`} key={header}>
+              <div className="inventory-field-heading">
+                <label htmlFor={fieldId}>{labelFor(header)}</label>
+                {lockedId && editMode === 'single' && <button
+                  type="button"
+                  className="inventory-field-edit"
+                  aria-label={`${labelFor(header)} संपादित करा`}
+                  title={`${labelFor(header)} संपादित करा`}
+                  onClick={() => setActiveField(header)}
+                >⚙</button>}
+              </div>
               {textareaFields.has(key) ? (
                 <div className="inventory-textarea-wrap">
                   <textarea
+                    id={fieldId}
                     rows="3"
                     value={value}
-                    onFocus={() => setSuggestionField(header)}
+                    readOnly={!isEditable || saving}
+                    onFocus={() => isEditable && setSuggestionField(header)}
                     onChange={(event) => { changeField(header, event.target.value); setSuggestionField(header); }}
                     onBlur={() => window.setTimeout(() => setSuggestionField(''), 120)}
                   />
-                  {suggestionField === header && fieldSuggestions.length > 0 && (
+                  {isEditable && suggestionField === header && fieldSuggestions.length > 0 && (
                     <div className="inventory-suggestions">
                       {fieldSuggestions.map((option) => <button type="button" key={option} onMouseDown={(event) => event.preventDefault()} onClick={() => { changeField(header, String(option)); setSuggestionField(''); }}>{option}</button>)}
                     </div>
@@ -262,15 +296,17 @@ export default function InventoryManage() {
                 </div>
               ) : (
                 <input
+                  id={fieldId}
                   type={numericFields.has(key) ? 'number' : key === 'imageurl' ? 'url' : 'text'}
                   step={numericFields.has(key) ? 'any' : undefined}
                   value={value}
                   list={listId}
+                  readOnly={!isEditable || saving}
                   onChange={(event) => changeField(header, event.target.value)}
                 />
               )}
               <datalist id={listId}>{valuesFor(header).map((option) => <option key={option} value={option} />)}</datalist>
-            </label>;
+            </div>;
           })}
         </div>
         <div className="inventory-editor-actions">
