@@ -6,6 +6,7 @@ import {
 import { GOOGLE_APPS_SCRIPT_CODE } from "../utils/googleAppsScriptTemplate";
 import ShopProp from "../config/shopProps";
 import { filterSheetRows, normalizeInventoryRow } from "../utils/sheetData";
+import { buildDashboardAnalytics } from "../utils/dashboardAnalytics";
 import { clearDashboardMetricsCache, getDashboardMetricsCache, setDashboardMetricsCache } from "../utils/dashboardCache";
 
 export { clearDashboardMetricsCache, getDashboardMetricsCache, setDashboardMetricsCache };
@@ -24,7 +25,7 @@ const AUTH_TOKEN_STORAGE_KEY = "sksk_auth_session_token";
 
 const DEFAULT_GOOGLE_SHEETS_API_URL =
   "https://script.google.com/macros/s/AKfycbxFuQ3TatmFB7jrVPcmjI1RF70HN_wpPtP_Wb3XA_Cfe8kitxFuJ95boUZA5Ac3oqklug/exec";
-const REQUIRED_GOOGLE_SHEETS_API_VERSION = "sksk-customer-portal-v9";
+const REQUIRED_GOOGLE_SHEETS_API_VERSION = "sksk-customer-portal-v10";
 
 // Default initial inventory seeded from products.js
 function getInitialInventory() {
@@ -240,7 +241,7 @@ async function requireGoogleSheetsApiVersion() {
   if (!response.ok) throw new Error(`Google Sheets version check failed (${response.status}).`);
   const result = await response.json();
   if (result.apiVersion !== REQUIRED_GOOGLE_SHEETS_API_VERSION) {
-    throw new Error("Google Apps Script जुनी आवृत्ती आहे. Inventory आणि customer accounts साठी updated script पुन्हा deploy करा.");
+    throw new Error("Google Apps Script जुनी आवृत्ती आहे. नवीन v10 script पुन्हा deploy करा.");
   }
 }
 
@@ -785,7 +786,39 @@ export function saveDeliveryChallan(challanData) {
 // -----------------------------------------------------------------------------
 // Dashboard Analytics & KPI Metrics
 // -----------------------------------------------------------------------------
-export async function getDashboardMetrics() {
+export async function getDashboardMetrics(filters = {}) {
+  const config = getGoogleSheetsConfig();
+  if (config.webAppUrl.trim()) {
+    const query = new URLSearchParams({
+      action: "getDashboardMetrics",
+      startDate: filters.startDate || "",
+      endDate: filters.endDate || "",
+      category: filters.category || "all",
+      search: filters.search || "",
+      status: filters.status || "all",
+      page: String(filters.page || 1),
+      limit: String(filters.limit || 5),
+      token: localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || "",
+    });
+    const response = await fetch(`${config.webAppUrl}${config.webAppUrl.includes("?") ? "&" : "?"}${query}`, {
+      method: "GET",
+      mode: "cors",
+      cache: "no-store",
+    });
+    if (!response.ok) throw new Error(`Google Sheets dashboard request failed (${response.status}).`);
+    const result = await response.json();
+    if (!result.success) {
+      if (/Invalid action: getDashboardMetrics/i.test(result.error || "")) {
+        throw new Error("Dashboard साठी नवीन Google Apps Script (v10) deploy करा.");
+      }
+      throw new Error(result.error || "Could not load dashboard metrics.");
+    }
+    return result.data;
+  }
+  return getLocalDashboardMetrics(filters);
+}
+
+async function getLocalDashboardMetrics(filters) {
   const readNumber = (row, ...keys) => {
     for (const key of keys) if (row?.[key] !== undefined && row[key] !== "") return Number(row[key]) || 0;
     return 0;
@@ -879,12 +912,32 @@ export async function getDashboardMetrics() {
     .filter((c) => Number(c.balanceUdhaari) > 0)
     .sort((a, b) => Number(b.balanceUdhaari) - Number(a.balanceUdhaari));
 
+  const startDate = filters.startDate || new Date().toISOString().slice(0, 10);
+  const endDate = filters.endDate || startDate;
+  const selectedBills = bills.filter((bill) => bill.billDate >= startDate && bill.billDate <= endDate);
+  const analytics = buildDashboardAnalytics({
+    metrics: { bills: selectedBills, inventory },
+    period: "custom",
+    fromMonth: startDate.slice(0, 7),
+    toMonth: endDate.slice(0, 7),
+    categoryFilter: filters.category || "all",
+  });
+  const search = String(filters.search || "").trim().toLowerCase();
+  const status = filters.status || "all";
+  const matchingBills = analytics.filteredBills.filter((bill) => {
+    const matchesSearch = !search || `${bill.billNo} ${bill.customerName}`.toLowerCase().includes(search);
+    const hasDue = Number(bill._filteredDue) > 0;
+    return matchesSearch && (status === "all" || (status === "due" ? hasDue : !hasDue));
+  });
+  const limit = Math.max(1, Math.min(100, Number(filters.limit) || 5));
+  const totalPages = Math.max(1, Math.ceil(matchingBills.length / limit));
+  const page = Math.min(Math.max(1, Number(filters.page) || 1), totalPages);
   return {
     totalSales,
     totalPaid,
     totalUdhaari,
     todaySales,
-    totalBills: bills.length,
+    totalBills: analytics.filteredBills.length,
     totalChallans: challans.length,
     totalInventoryProducts: inventory.length,
     totalStockValuation,
@@ -892,7 +945,11 @@ export async function getDashboardMetrics() {
     lowStockItems,
     pendingKhata,
     totalCustomers: customers.length,
-    bills,
+    bills: matchingBills.slice((page - 1) * limit, page * limit),
+    selectedTotals: analytics.selectedTotals,
+    chartData: analytics.chartData,
+    categoryData: analytics.categoryData,
+    billPagination: { page, limit, total: matchingBills.length, totalPages },
     inventory,
     categories: [...new Set(inventory.map((item) => item.category).filter(Boolean))].sort(),
   };

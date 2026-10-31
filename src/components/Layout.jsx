@@ -83,7 +83,7 @@ export default function Layout({ children }) {
         gap: '8px'
       }}>
         <span>
-          🌱 शेतकरी हित प्रथम • अस्सल खते व औषधे • घरपोच डिलिव्हरी
+          🌱 शेतकरी हित प्रथम • अस्सल खते व औषधे
         </span>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -364,7 +364,7 @@ export default function Layout({ children }) {
           <div>
             <h3 style={{ margin: '0 0 10px', fontSize: '18px', color: '#b9dc68' }}>स्वराज कृषी सेवा केंद्र</h3>
             <p style={{ margin: 0, fontSize: '13px', lineHeight: '1.6', color: '#d0dfd4' }}>
-              शेतकरी बांधवांसाठी अस्सल कंपनीची खते, कीटकनाशके, बुरशीनाशके, विद्राव्य खते व आधुनिक कृषी सल्ला. घरपोच डिलिव्हरी उपलब्ध!
+              शेतकरी बांधवांसाठी अस्सल कंपनीची खते, कीटकनाशके, बुरशीनाशके, विद्राव्य खते व आधुनिक कृषी सल्ला.
             </p>
           </div>
 
@@ -374,7 +374,7 @@ export default function Layout({ children }) {
               <Link to="/products" style={{ color: '#ffffff', textDecoration: 'none' }}>• उत्पादने यादी</Link>
               <Link to="/customer/portal" style={{ color: '#ffffff', textDecoration: 'none' }}>• शेतकरी ग्राहक पोर्टल</Link>
               <Link to="/admin/login" style={{ color: '#ffffff', textDecoration: 'none' }}>• व्यवस्थापक / कर्मचारी लॉगिन</Link>
-              <Link to="/services" style={{ color: '#ffffff', textDecoration: 'none' }}>• घरपोच डिलिव्हरी व सेवा</Link>
+              <Link to="/services" style={{ color: '#ffffff', textDecoration: 'none' }}>• सेवा व माहिती</Link>
             </div>
           </div>
 

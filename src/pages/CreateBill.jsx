@@ -247,7 +247,7 @@ ${billData.dueDate ? `🗓️ *उधारी जमा तारीख:* ${bil
 ${billData.notes ? `📝 *नोंद:* ${billData.notes}\n` : ''}
 आपण या बिलाची अधिकृत प्रत आमच्या वेबसाईटवरील ग्राहक पोर्टलवरून कधीही डाऊनलोड करू शकता.
 
-आपल्या शेतीविषयक औषधांचे पाण्याचे प्रमाण व डोस विचारण्यासाठी आमच्या AI कृषी मित्राशी संपर्क साधा!
+आपल्या शेतीविषयक औषधांचे पाण्याचे प्रमाण व डोस विचारण्यासाठी आमच्या AI कृषी मित्राशी संपर्क साधा.
 📞 संपर्क: निलेश त्र्यंबक दवंगे (+91 8459568940)
 धन्यवाद! 🙏`;
 
@@ -360,9 +360,7 @@ ${billData.notes ? `📝 *नोंद:* ${billData.notes}\n` : ''}
           <Link to="/admin/bills" className="secondary-btn" style={{ padding: '10px 16px', fontSize: '13px' }}>
             📋 सर्व बिले (History)
           </Link>
-          <Link to="/admin/challan/create" className="secondary-btn" style={{ padding: '10px 16px', fontSize: '13px' }}>
-            🚚 चालन बनवा
-          </Link>
+
           <button
             type="button"
             onClick={() => setPreviewOpen(true)}
@@ -859,6 +857,16 @@ ${billData.notes ? `📝 *नोंद:* ${billData.notes}\n` : ''}
               💬 सेव्ह व WhatsApp वर पाठवा
             </button>
 
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={() => handleExecuteAction('save')}
+              disabled={isProcessing}
+              style={{ padding: '12px 18px', fontSize: '14px' }}
+            >
+              💾 फक्त सेव्ह करा
+            </button>
+
             {/* Print & Save */}
             <button
               type="button"
@@ -935,6 +943,16 @@ ${billData.notes ? `📝 *नोंद:* ${billData.notes}\n` : ''}
                   }}
                 >
                   💬 WhatsApp शेअर
+                </button>
+
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  onClick={() => handleExecuteAction('save')}
+                  disabled={isProcessing}
+                  style={{ padding: '10px 16px', fontSize: '13px' }}
+                >
+                  💾 फक्त सेव्ह करा
                 </button>
 
                 <button

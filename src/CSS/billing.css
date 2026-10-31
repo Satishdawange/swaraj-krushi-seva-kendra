@@ -178,12 +178,6 @@
 }
 
 .inventory-product-options {
-  position: absolute;
-  z-index: 20;
-  top: calc(100% + 3px);
-  left: 0;
-  right: 0;
-  max-height: 280px;
   overflow-y: auto;
   border: 1px solid #c8d8cc;
   border-radius: 6px;
@@ -226,11 +220,6 @@
 }
 
 .inventory-product-no-match {
-  position: absolute;
-  z-index: 20;
-  top: calc(100% + 3px);
-  left: 0;
-  right: 0;
   border: 1px solid #c8d8cc;
   border-radius: 6px;
   background: white;

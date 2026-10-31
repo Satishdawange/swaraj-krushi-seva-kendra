@@ -1,9 +1,11 @@
-const DASHBOARD_CACHE_PREFIX = "sksk_dashboard_metrics:";
+const DASHBOARD_CACHE_PREFIX = "sksk_dashboard_metrics_v2:";
+const LEGACY_DASHBOARD_CACHE_PREFIX = "sksk_dashboard_metrics:";
 
 export function getDashboardMetricsCache(userId) {
   if (!userId) return null;
   const cacheKey = `${DASHBOARD_CACHE_PREFIX}${encodeURIComponent(userId)}`;
   try {
+    localStorage.removeItem(`${LEGACY_DASHBOARD_CACHE_PREFIX}${encodeURIComponent(userId)}`);
     const cached = localStorage.getItem(cacheKey);
     if (!cached) return null;
     const parsed = JSON.parse(cached);
@@ -25,6 +27,7 @@ export function getDashboardMetricsCache(userId) {
 
 export function setDashboardMetricsCache(userId, metrics) {
   if (!userId || !metrics) return;
+  localStorage.removeItem(`${LEGACY_DASHBOARD_CACHE_PREFIX}${encodeURIComponent(userId)}`);
   localStorage.setItem(`${DASHBOARD_CACHE_PREFIX}${encodeURIComponent(userId)}`, JSON.stringify({
     metrics,
     savedAt: new Date().toISOString(),
@@ -34,4 +37,5 @@ export function setDashboardMetricsCache(userId, metrics) {
 export function clearDashboardMetricsCache(userId) {
   if (!userId) return;
   localStorage.removeItem(`${DASHBOARD_CACHE_PREFIX}${encodeURIComponent(userId)}`);
+  localStorage.removeItem(`${LEGACY_DASHBOARD_CACHE_PREFIX}${encodeURIComponent(userId)}`);
 }

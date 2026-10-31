@@ -496,6 +496,20 @@
   flex: 0 1 auto;
 }
 
+.dashboard-pagination {
+  justify-content: flex-end;
+  margin: 12px 0 0;
+}
+
+.dashboard-pagination .dashboard-filter-note {
+  margin-right: auto;
+}
+
+.dashboard-pagination .dashboard-button {
+  min-height: 32px;
+  padding: 6px 10px;
+}
+
 .dashboard-table-wrap {
   width: 100%;
   overflow: auto;

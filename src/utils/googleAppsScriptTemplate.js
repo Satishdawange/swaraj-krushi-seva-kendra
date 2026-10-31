@@ -45,7 +45,11 @@ const TABS = {
   PRODUCT_REQUESTS: 'Product_Requests',
   AUTH_SESSIONS: 'Auth_Sessions'
 };
-const API_VERSION = 'sksk-customer-portal-v9';
+const API_VERSION = 'sksk-customer-portal-v10';
+
+function isBillsSheetName(sheetName) {
+  return sheetName === TABS.BILLS || /^Bills_[0-9]{4}_[0-9]{2}$/.test(String(sheetName || ''));
+}
 
 function doGet(e) {
   return handleRequest(e);
@@ -100,6 +104,13 @@ function handleRequest(e) {
           ? getStats(ss)
           : requireStaffOrAdmin(ss, params.token);
         break;
+
+      case 'getDashboardMetrics':
+        const dashboardAccess = requireStaffOrAdmin(ss, params.token);
+        result = dashboardAccess.success
+          ? getDashboardMetricsForRange(ss, params)
+          : dashboardAccess;
+        break;
         
       case 'getRecent':
         const recentSheet = params.sheetName || TABS.BILLS;
@@ -107,7 +118,7 @@ function handleRequest(e) {
         const recentUser = recentSession.valid ? recentSession.user : null;
         const recentIsAdmin = recentUser?.role === 'admin';
         const recentIsStaff = recentUser?.role === 'staff';
-        const recentNeedsStaff = ['Bills', 'Customers', 'Purchase_Lots', 'Challans', 'Stats', 'Inventory'].includes(recentSheet);
+        const recentNeedsStaff = isBillsSheetName(recentSheet) || ['Customers', 'Purchase_Lots', 'Challans', 'Stats', 'Inventory'].includes(recentSheet);
         if (recentNeedsStaff && !recentIsAdmin && !recentIsStaff) {
           result = { success: false, error: 'Sign in is required to access these records.' };
         } else {
@@ -131,7 +142,7 @@ function handleRequest(e) {
         const allUser = allSession.valid ? allSession.user : null;
         const allIsAdmin = allUser?.role === 'admin';
         const allIsStaff = allUser?.role === 'staff';
-        if (['Bills', 'Customers', 'Purchase_Lots', 'Challans', 'Stats'].includes(allSheet) && !allIsAdmin && !allIsStaff) {
+        if ((isBillsSheetName(allSheet) || ['Customers', 'Purchase_Lots', 'Challans', 'Stats'].includes(allSheet)) && !allIsAdmin && !allIsStaff) {
           result = { success: false, error: 'Sign in is required to access these records.' };
         } else {
           result = getAllRecords(ss, allSheet);
@@ -265,6 +276,28 @@ function getRecentPaginated(ss, sheetName, page, limit, search, category) {
   if (sheetName === TABS.USERS) {
     return { success: false, error: 'Users records are not available through the public API' };
   }
+  if (sheetName === TABS.BILLS) {
+    const records = getAllBillRecords(ss);
+    const query = String(search || '').trim().toLowerCase();
+    const filtered = records.filter(function(record) {
+      return !query || Object.keys(record).some(function(key) {
+        return String(record[key] || '').toLowerCase().indexOf(query) !== -1;
+      });
+    }).sort(function(a, b) {
+      return dashboardBillDateKey(b) .localeCompare(dashboardBillDateKey(a));
+    });
+    const validLimit = Math.max(1, Math.min(100, Number(limit) || 10));
+    const totalPages = Math.ceil(filtered.length / validLimit) || 1;
+    const validPage = Math.max(1, Math.min(Number(page) || 1, totalPages));
+    return {
+      success: true,
+      data: filtered.slice((validPage - 1) * validLimit, validPage * validLimit),
+      total: filtered.length,
+      page: validPage,
+      limit: validLimit,
+      totalPages: totalPages
+    };
+  }
   const sheet = ss.getSheetByName(sheetName);
   if (!sheet) {
     return { success: false, error: 'Sheet not found: ' + sheetName };
@@ -327,6 +360,9 @@ function getAllRecords(ss, sheetName) {
   if (sheetName === TABS.USERS) {
     return { success: false, error: 'Users records are not available through the public API' };
   }
+  if (sheetName === TABS.BILLS) {
+    return { success: true, data: getAllBillRecords(ss) };
+  }
   const sheet = ss.getSheetByName(sheetName);
   if (!sheet) return { success: false, error: 'Sheet not found: ' + sheetName };
   
@@ -346,6 +382,233 @@ function getAllRecords(ss, sheetName) {
   });
   
   return { success: true, data: list };
+}
+
+function dashboardMonthKey(year, month) {
+  return String(year) + '_' + String(month).padStart(2, '0');
+}
+
+function dashboardBillDateKey(record) {
+  const value = getRecordValue(record, 'Date');
+  if (value instanceof Date) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+  const text = String(value || '').trim();
+  if (/^[0-9]{4}-[0-9]{2}-[0-9]{2}/.test(text)) return text.substring(0, 10);
+  const parsed = new Date(text);
+  return isNaN(parsed.getTime()) ? '' : Utilities.formatDate(parsed, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
+function dashboardSheetRecords(sheet) {
+  if (!sheet || sheet.getLastRow() <= 1 || sheet.getLastColumn() < 1) return [];
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  return sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues().map(function(row) {
+    const record = {};
+    headers.forEach(function(header, index) { record[header] = row[index]; });
+    return record;
+  });
+}
+
+function getAllBillRecords(ss) {
+  const sheets = ss.getSheets().filter(function(sheet) {
+    return isBillsSheetName(sheet.getName());
+  });
+  return sheets.reduce(function(all, sheet) {
+    return all.concat(dashboardSheetRecords(sheet));
+  }, []);
+}
+
+function getBillRecordsForRange(ss, startDate, endDate) {
+  if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(startDate) || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(endDate)) {
+    throw new Error('Dashboard dates must use YYYY-MM-DD format.');
+  }
+  const first = new Date(startDate + 'T00:00:00');
+  const last = new Date(endDate + 'T00:00:00');
+  if (isNaN(first.getTime()) || isNaN(last.getTime()) || first > last) {
+    throw new Error('Invalid dashboard date range.');
+  }
+
+  const records = [];
+  const baseSheet = ss.getSheetByName(TABS.BILLS);
+  let baseRecords = null;
+  const monthCount = (last.getFullYear() - first.getFullYear()) * 12 + last.getMonth() - first.getMonth() + 1;
+  if (monthCount > 24) throw new Error('Dashboard date range cannot exceed 24 months.');
+  for (let offset = 0; offset < monthCount; offset++) {
+    const monthDate = new Date(first.getFullYear(), first.getMonth() + offset, 1);
+    const monthlySheet = ss.getSheetByName('Bills_' + dashboardMonthKey(monthDate.getFullYear(), monthDate.getMonth() + 1));
+    const monthRecords = monthlySheet
+      ? dashboardSheetRecords(monthlySheet)
+      : (baseRecords || (baseRecords = dashboardSheetRecords(baseSheet))).filter(function(record) {
+          const key = dashboardBillDateKey(record);
+          return key.substring(0, 7) === Utilities.formatDate(monthDate, Session.getScriptTimeZone(), 'yyyy-MM');
+        });
+    monthRecords.forEach(function(record) {
+      const dateKey = dashboardBillDateKey(record);
+      if (dateKey >= startDate && dateKey <= endDate) records.push(record);
+    });
+  }
+  return records;
+}
+
+function getDashboardMetricsForRange(ss, params) {
+  const startDate = String(params.startDate || '');
+  const endDate = String(params.endDate || '');
+  const selectedCategory = String(params.category || 'all');
+  const search = String(params.search || '').trim().toLowerCase();
+  const status = String(params.status || 'all');
+  const pageSize = Math.max(1, Math.min(100, Number(params.limit) || 5));
+  const page = Math.max(1, Number(params.page) || 1);
+  const billRecords = getBillRecordsForRange(ss, startDate, endDate);
+  const inventory = dashboardSheetRecords(ss.getSheetByName(TABS.INVENTORY));
+  const categoryByRef = Object.create(null);
+  inventory.forEach(function(item, index) {
+    const category = getRecordValue(item, 'Category') || getRecordValue(item, 'Category_MR') || getRecordValue(item, 'Category_EN') || 'इतर';
+    [getRecordValue(item, 'ID'), getRecordValue(item, 'Name'), getRecordValue(item, 'Name_EN')].forEach(function(ref) {
+      const key = String(ref || '').trim().toLowerCase();
+      if (key && !Object.prototype.hasOwnProperty.call(categoryByRef, key)) categoryByRef[key] = { category: category, index: index };
+    });
+  });
+  function itemCategory(item) {
+    const explicit = getRecordValue(item, 'Category');
+    if (explicit) return explicit;
+    const refs = [
+      getRecordValue(item, 'Product_ID'), getRecordValue(item, 'ProductId'), getRecordValue(item, 'InventoryId'),
+      getRecordValue(item, 'Product_Name'), getRecordValue(item, 'ProductName'), getRecordValue(item, 'Name'), getRecordValue(item, 'ID')
+    ];
+    let match = null;
+    refs.forEach(function(ref) {
+      const candidate = categoryByRef[String(ref || '').trim().toLowerCase()];
+      if (candidate && (!match || candidate.index < match.index)) match = candidate;
+    });
+    return match ? match.category : 'इतर';
+  }
+  function lineTotal(item) {
+    const explicit = getRecordValue(item, 'Total_Amount') || getRecordValue(item, 'Total') || getRecordValue(item, 'Line_Total') || getRecordValue(item, 'Amount');
+    return Number(explicit || (Number(getRecordValue(item, 'Quantity') || getRecordValue(item, 'Qty') || 0) * Number(getRecordValue(item, 'Price') || getRecordValue(item, 'Selling_Price') || getRecordValue(item, 'Rate') || 0))) || 0;
+  }
+  const normalizedBills = billRecords.map(function(record) {
+    let items = getRecordValue(record, 'Items_JSON') || getRecordValue(record, 'Items') || [];
+    if (typeof items === 'string') {
+      try { items = JSON.parse(items); } catch (error) { items = []; }
+    }
+    if (!Array.isArray(items)) items = [];
+    const total = Number(getRecordValue(record, 'Total_Amount') || 0);
+    const paid = Number(getRecordValue(record, 'Paid_Amount') || 0);
+    const due = Number(getRecordValue(record, 'Balance_Amount') || 0);
+    const lines = items.map(function(item) {
+      return { category: itemCategory(item), amount: lineTotal(item) };
+    });
+    const matching = selectedCategory === 'all' ? lines : lines.filter(function(line) { return line.category === selectedCategory; });
+    const selectedTotal = selectedCategory === 'all' || !lines.length
+      ? total
+      : matching.reduce(function(sum, line) { return sum + line.amount; }, 0);
+    const ratio = total ? selectedTotal / total : 0;
+    const dateKey = dashboardBillDateKey(record);
+    return {
+      billNo: getRecordValue(record, 'Bill_No') || getRecordValue(record, 'ID'),
+      billDate: dateKey,
+      totalAmount: total,
+      paidAmount: paid,
+      balanceAmount: due,
+      customerName: getRecordValue(record, 'Customer_Name'),
+      items: items,
+      _filteredTotal: selectedTotal,
+      _filteredPaid: paid * ratio,
+      _filteredDue: due * ratio,
+      _categories: lines
+    };
+  }).filter(function(bill) {
+    return bill.billDate >= startDate && bill.billDate <= endDate &&
+      (selectedCategory === 'all' || bill._categories.some(function(line) { return line.category === selectedCategory; }));
+  }).sort(function(a, b) { return b.billDate.localeCompare(a.billDate); });
+
+  const selectedTotals = normalizedBills.reduce(function(totals, bill) {
+    totals.sales += bill._filteredTotal;
+    totals.paid += bill._filteredPaid;
+    totals.due += bill._filteredDue;
+    return totals;
+  }, { sales: 0, paid: 0, due: 0 });
+  const chartData = {};
+  const start = new Date(startDate + 'T00:00:00');
+  const end = new Date(endDate + 'T00:00:00');
+  const monthly = start.getFullYear() !== end.getFullYear() || start.getMonth() !== end.getMonth();
+  for (let cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
+    const day = Utilities.formatDate(cursor, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    chartData[monthly ? day.substring(0, 7) : day] = 0;
+  }
+  normalizedBills.forEach(function(bill) {
+    const key = monthly ? bill.billDate.substring(0, 7) : bill.billDate;
+    if (Object.prototype.hasOwnProperty.call(chartData, key)) chartData[key] += bill._filteredTotal;
+  });
+  const categories = {};
+  normalizedBills.forEach(function(bill) {
+    bill._categories.forEach(function(line) {
+      categories[line.category] = (categories[line.category] || 0) + line.amount;
+    });
+  });
+  const visible = normalizedBills.filter(function(bill) {
+    const matchesSearch = !search || (String(bill.billNo) + ' ' + String(bill.customerName)).toLowerCase().indexOf(search) !== -1;
+    const isDue = bill._filteredDue > 0;
+    return matchesSearch && (status === 'all' || (status === 'due' ? isDue : !isDue));
+  });
+  const totalPages = Math.max(1, Math.ceil(visible.length / pageSize));
+  const validPage = Math.min(page, totalPages);
+  const pageBills = visible.slice((validPage - 1) * pageSize, validPage * pageSize).map(function(bill) {
+    delete bill._categories;
+    return bill;
+  });
+  const inventoryStats = inventory.reduce(function(stats, item) {
+    const stock = Number(getRecordValue(item, 'Available_Stock') || getRecordValue(item, 'Quantity') || getRecordValue(item, 'Stock') || 0);
+    const minimum = Number(getRecordValue(item, 'Min_Alert_Qty') || 10);
+    stats.totalStockValuation += Number(getRecordValue(item, 'Purchase_Price') || 0) * stock;
+    if (stock <= minimum) {
+      stats.lowStockCount++;
+      if (stats.lowStockItems.length < 100) stats.lowStockItems.push({
+        id: getRecordValue(item, 'ID') || getRecordValue(item, 'Product_ID'),
+        name: getRecordValue(item, 'Name'),
+        category: getRecordValue(item, 'Category') || 'इतर',
+        availableStock: stock,
+        minAlertQty: minimum
+      });
+    }
+    return stats;
+  }, { totalStockValuation: 0, lowStockCount: 0, lowStockItems: [] });
+  const customers = dashboardSheetRecords(ss.getSheetByName(TABS.CUSTOMERS));
+  const pendingKhata = customers.map(function(customer) {
+    return {
+      id: getRecordValue(customer, 'ID'),
+      customerName: getRecordValue(customer, 'Customer_Name'),
+      mobile: getRecordValue(customer, 'Mobile'),
+      totalPurchased: Number(getRecordValue(customer, 'Total_Purchased') || 0),
+      balanceUdhaari: Number(getRecordValue(customer, 'Balance_Udhaari') || 0)
+    };
+  }).filter(function(customer) { return customer.balanceUdhaari > 0; })
+    .sort(function(a, b) { return b.balanceUdhaari - a.balanceUdhaari; });
+  const challans = dashboardSheetRecords(ss.getSheetByName(TABS.CHALLANS)).sort(function(a, b) {
+    return dashboardBillDateKey(b).localeCompare(dashboardBillDateKey(a));
+  });
+  const totalChallans = challans.length;
+  return {
+    success: true,
+    data: {
+      selectedTotals: selectedTotals,
+      totalBills: normalizedBills.length,
+      bills: pageBills,
+      billPagination: { page: validPage, limit: pageSize, total: visible.length, totalPages: totalPages },
+      chartData: Object.keys(chartData).sort().map(function(label) { return { label: label, value: chartData[label] }; }),
+      categoryData: Object.keys(categories).map(function(category) { return [category, categories[category]]; })
+        .sort(function(a, b) { return b[1] - a[1]; }).slice(0, 8),
+      totalChallans: totalChallans,
+      totalInventoryProducts: inventory.length,
+      totalStockValuation: inventoryStats.totalStockValuation,
+      lowStockCount: inventoryStats.lowStockCount,
+      lowStockItems: inventoryStats.lowStockItems,
+      pendingKhata: pendingKhata,
+      totalCustomers: customers.length,
+      challans: challans.slice(0, 6),
+      categories: Array.from(new Set(inventory.map(function(item) { return getRecordValue(item, 'Category') || getRecordValue(item, 'Category_MR'); }).filter(Boolean))).sort()
+    }
+  };
 }
 
 function publicInventoryRecord(record) {
@@ -391,31 +654,16 @@ function getBillsForCustomer(ss, token) {
     .replace(/\D/g, '').slice(-10);
   if (!mobile) return { success: false, error: 'No mobile number is associated with this account.' };
 
-  const sheet = ss.getSheetByName(TABS.BILLS);
-  if (!sheet || sheet.getLastRow() <= 1) return { success: true, data: [] };
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const columns = headers.map(normalizeHeader);
-  const mobileColumn = columns.findIndex(key => key === 'mobile' || key === 'customermobile');
-  const billNoColumn = columns.indexOf('billno');
-  const billBookColumn = columns.indexOf('billbookbillno');
-  const dateColumn = columns.indexOf('date');
-  const itemsColumn = columns.indexOf('itemsjson');
-  if (mobileColumn < 0) return { success: false, error: 'Bills sheet has no customer mobile column.' };
-
-  const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
-  const data = [];
-  for (let index = rows.length - 1; index >= 0; index--) {
-    const rowMobile = String(rows[index][mobileColumn] || '').replace(/\D/g, '').slice(-10);
-    if (rowMobile !== mobile) continue;
-    let sourceItems = [];
-    if (itemsColumn >= 0) {
-      try {
-        sourceItems = typeof rows[index][itemsColumn] === 'string'
-          ? JSON.parse(rows[index][itemsColumn] || '[]')
-          : (rows[index][itemsColumn] || []);
-      } catch (error) {
-        sourceItems = [];
-      }
+  const data = getAllBillRecords(ss).filter(function(record) {
+    const rowMobile = String(getRecordValue(record, 'Mobile') || getRecordValue(record, 'Customer_Mobile') || '')
+      .replace(/\D/g, '').slice(-10);
+    return rowMobile === mobile;
+  }).sort(function(a, b) {
+    return dashboardBillDateKey(b).localeCompare(dashboardBillDateKey(a));
+  }).map(function(record) {
+    let sourceItems = getRecordValue(record, 'Items_JSON') || getRecordValue(record, 'Items') || [];
+    if (typeof sourceItems === 'string') {
+      try { sourceItems = JSON.parse(sourceItems || '[]'); } catch (error) { sourceItems = []; }
     }
     const safeItems = (Array.isArray(sourceItems) ? sourceItems : []).map(function(item) {
       return {
@@ -426,13 +674,13 @@ function getBillsForCustomer(ss, token) {
         unit: item.unit || item.Unit || 'नग'
       };
     });
-    data.push({
-      Bill_No: billNoColumn >= 0 ? rows[index][billNoColumn] : '',
-      Billbook_Bill_No: billBookColumn >= 0 ? rows[index][billBookColumn] : '',
-      Date: dateColumn >= 0 ? rows[index][dateColumn] : '',
+    return {
+      Bill_No: getRecordValue(record, 'Bill_No') || '',
+      Billbook_Bill_No: getRecordValue(record, 'Billbook_Bill_No') || '',
+      Date: dashboardBillDateKey(record),
       Items_JSON: JSON.stringify(safeItems)
-    });
-  }
+    };
+  });
   return { success: true, data: data, total: data.length };
 }
 
@@ -492,15 +740,33 @@ function ensureHeader(sheet, header) {
 function saveBillRecord(ss, bill) {
   if (!bill) return { success: false, error: 'No bill data provided' };
   
-  let sheet = ss.getSheetByName(TABS.BILLS);
-  if (!sheet) {
+  let baseSheet = ss.getSheetByName(TABS.BILLS);
+  if (!baseSheet) {
     initAllTabs(ss);
-    sheet = ss.getSheetByName(TABS.BILLS);
+    baseSheet = ss.getSheetByName(TABS.BILLS);
+  }
+  const billDate = bill.billDate || new Date().toISOString().split('T')[0];
+  const dateParts = String(billDate).substring(0, 10).match(/^([0-9]{4})-([0-9]{2})-([0-9]{2})$/);
+  if (!dateParts) return { success: false, error: 'Invalid bill date.' };
+  const billYear = Number(dateParts[1]);
+  const billMonth = Number(dateParts[2]);
+  const billDay = Number(dateParts[3]);
+  const parsedBillDate = new Date(billYear, billMonth - 1, billDay);
+  if (billMonth < 1 || billMonth > 12 || parsedBillDate.getFullYear() !== billYear || parsedBillDate.getMonth() !== billMonth - 1 || parsedBillDate.getDate() !== billDay) {
+    return { success: false, error: 'Invalid bill date.' };
+  }
+  const monthSheetName = 'Bills_' + dashboardMonthKey(billYear, billMonth);
+  let sheet = ss.getSheetByName(monthSheetName);
+  if (!sheet) {
+    sheet = ss.insertSheet(monthSheetName);
+    const source = baseSheet.getRange(1, 1, 1, baseSheet.getLastColumn()).getValues();
+    sheet.getRange(1, 1, 1, source[0].length).setValues(source);
+    sheet.getRange(1, 1, 1, source[0].length).setFontWeight('bold').setBackground('#176b3a').setFontColor('#ffffff');
+    sheet.setFrozenRows(1);
   }
   ensureHeader(sheet, 'Billbook_Bill_No');
   
   const billNo = bill.billNo || ('SKSK-' + Date.now());
-  const billDate = bill.billDate || new Date().toISOString().split('T')[0];
   const itemsJson = typeof bill.items === 'string' ? bill.items : JSON.stringify(bill.items || []);
   
   // Append to Bills Sheet
@@ -811,19 +1077,12 @@ function updateCachedStats(ss) {
   let totalPaid = 0;
   let totalUdhaari = 0;
   
-  if (billsSheet && billsSheet.getLastRow() > 1) {
-    const headers = billsSheet.getRange(1, 1, 1, billsSheet.getLastColumn()).getValues()[0].map(normalizeHeader);
-    const totalColumn = headers.indexOf('totalamount');
-    const paidColumn = headers.indexOf('paidamount');
-    const balanceColumn = headers.indexOf('balanceamount');
-    const billValues = billsSheet.getRange(2, 1, billsSheet.getLastRow() - 1, headers.length).getValues();
-    totalBills = billValues.length;
-    billValues.forEach(row => {
-      totalSales += totalColumn >= 0 ? Number(row[totalColumn] || 0) : 0;
-      totalPaid += paidColumn >= 0 ? Number(row[paidColumn] || 0) : 0;
-      totalUdhaari += balanceColumn >= 0 ? Number(row[balanceColumn] || 0) : 0;
-    });
-  }
+  getAllBillRecords(ss).forEach(function(bill) {
+    totalBills++;
+    totalSales += Number(getRecordValue(bill, 'Total_Amount') || 0);
+    totalPaid += Number(getRecordValue(bill, 'Paid_Amount') || 0);
+    totalUdhaari += Number(getRecordValue(bill, 'Balance_Amount') || 0);
+  });
   
   let totalStockItems = 0;
   let totalStockValuation = 0;

@@ -30,7 +30,6 @@ export default function BillHistory() {
   const [activeBill, setActiveBill] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
-  const [viewActivityLog, setViewActivityLog] = useState(false);
 
   // Edit Form State (when in Red Update Mode)
   const [editCustomerName, setEditCustomerName] = useState('');
@@ -129,17 +128,21 @@ export default function BillHistory() {
     setEditPaymentMode(activeBill.paymentMode || 'Cash');
     setEditNotes(activeBill.notes || '');
 
-    // Clone items
+    // Clone items — preserve actual values including 0 prices for editing
     const clonedItems = Array.isArray(activeBill.items)
-      ? activeBill.items.map((item, idx) => ({
-          id: item.id || Date.now() + idx,
-          name: item.name || '',
-          qty: item.qty || 1,
-          unit: item.unit || 'नग',
-          price: item.price || 0,
-          total: item.total || (item.qty || 1) * (item.price || 0)
-        }))
-      : [{ id: Date.now(), name: '', qty: 1, unit: 'नग', price: 0, total: 0 }];
+      ? activeBill.items.map((item, idx) => {
+          const qty = Number(item.qty) || 1;
+          const price = Number(item.price) || 0;
+          return {
+            id: item.id || Date.now() + idx,
+            name: item.name || '',
+            qty,
+            unit: item.unit || 'नग',
+            price: price === 0 ? '' : price, // show empty if 0 so user must fill
+            total: qty * price
+          };
+        })
+      : [{ id: Date.now(), name: '', qty: 1, unit: 'नग', price: '', total: 0 }];
 
     setEditItems(clonedItems);
     setEditErrors({});
@@ -285,7 +288,7 @@ export default function BillHistory() {
         </div>
         <div className="billing-nav-actions">
           <button
-            onClick={loadData}
+            onClick={() => loadData(currentPage)}
             className="secondary-btn"
             style={{ padding: '10px 16px', fontSize: '13px' }}
           >
@@ -604,28 +607,7 @@ export default function BillHistory() {
                     >
                       ✏️ हे बिल संपादित करा (Edit Bill)
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setViewActivityLog(!viewActivityLog)}
-                      style={{
-                        background: viewActivityLog ? '#f3e8ff' : '#f9fafb',
-                        color: viewActivityLog ? '#6b21a8' : '#374151',
-                        border: '1.5px solid',
-                        borderColor: viewActivityLog ? '#c084fc' : '#d1d5db',
-                        padding: '8px 12px',
-                        borderRadius: '12px',
-                        fontSize: '13px',
-                        fontWeight: '700',
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px'
-                      }}
-                    >
-                      {viewActivityLog
-                        ? '👁️ बिल पावती पहा'
-                        : `📜 बदल इतिहास (${activeBill.editHistory?.length || 0})`}
-                    </button>
+
                   </>
                 ) : null}
 
@@ -665,139 +647,10 @@ export default function BillHistory() {
             {/* Modal Body */}
             <div className="invoice-modal-body" style={{ background: isEditMode ? '#fffdfd' : '#ecefe8', padding: '20px 24px' }}>
               {!isEditMode ? (
-                viewActivityLog ? (
-                  /* ================= Activity History View ================= */
-                  <div style={{
-                    width: '100%',
-                    maxWidth: '820px',
-                    margin: '0 auto',
-                    background: '#ffffff',
-                    borderRadius: '16px',
-                    padding: '24px',
-                    border: '1px solid #dfe7e1',
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.05)'
-                  }}>
-                    <div style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      borderBottom: '1.5px solid #e5e7eb',
-                      paddingBottom: '16px',
-                      marginBottom: '20px',
-                      flexWrap: 'wrap',
-                      gap: '10px'
-                    }}>
-                      <div>
-                        <h3 style={{ margin: '0 0 4px', color: '#1f2937', fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          📜 बिलाचा संपादन इतिहास (Bill Edit History & Activity Log)
-                        </h3>
-                        <p style={{ margin: 0, fontSize: '12px', color: '#6b7280' }}>
-                          🔒 ही नोंद फक्त ॲडमिनसाठी आहे (बिलाच्या छापील पावतीवर किंवा PDF वर हे येणार नाही).
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        className="secondary-btn"
-                        onClick={() => setViewActivityLog(false)}
-                        style={{ padding: '7px 14px', fontSize: '12.5px' }}
-                      >
-                        ⬅️ मूळ पावती पहा
-                      </button>
-                    </div>
-
-                    {(!activeBill.editHistory || activeBill.editHistory.length === 0) ? (
-                      <div style={{
-                        textAlign: 'center',
-                        padding: '50px 20px',
-                        background: '#f9fafb',
-                        borderRadius: '14px',
-                        border: '1px dashed #d1d5db'
-                      }}>
-                        <div style={{ fontSize: '36px', marginBottom: '8px' }}>🌱</div>
-                        <h4 style={{ margin: '0 0 6px', color: '#374151', fontSize: '16px' }}>
-                          हे मूळ बिल आहे (No Edits Recorded)
-                        </h4>
-                        <p style={{ margin: 0, color: '#6b7280', fontSize: '13px' }}>
-                          तयार केल्यापासून या बिलामध्ये कोणताही बदल केलेला नाही.
-                        </p>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                        {activeBill.editHistory.map((entry, idx) => (
-                          <div
-                            key={entry.id || idx}
-                            style={{
-                              border: '1.5px solid #e2e8f0',
-                              borderRadius: '14px',
-                              overflow: 'hidden',
-                              background: '#ffffff',
-                              boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
-                            }}
-                          >
-                            <div style={{
-                              background: '#f8fafc',
-                              padding: '10px 16px',
-                              borderBottom: '1px solid #e2e8f0',
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              fontSize: '12.5px'
-                            }}>
-                              <div>
-                                <span style={{ color: '#64748b' }}>तारीख व वेळ: </span>
-                                <strong style={{ color: '#0f172a' }}>
-                                  {entry.formattedDateTime || entry.timestamp}
-                                </strong>
-                              </div>
-                              <span style={{
-                                background: '#fee2e2',
-                                color: '#991b1b',
-                                padding: '2px 8px',
-                                borderRadius: '6px',
-                                fontWeight: '700',
-                                fontSize: '11px'
-                              }}>
-                                {entry.changes?.length || 0} बदल नोंदवले गेले
-                              </span>
-                            </div>
-
-                            <div style={{ overflowX: 'auto', padding: '14px 16px' }}>
-                              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                                <thead>
-                                  <tr style={{ background: '#f1f5f9', color: '#475569', textAlign: 'left' }}>
-                                    <th style={{ padding: '8px 10px', borderBottom: '1px solid #e2e8f0', width: '25%' }}>बदललेली माहिती (Field)</th>
-                                    <th style={{ padding: '8px 10px', borderBottom: '1px solid #e2e8f0', width: '37%' }}>पूर्वीचे मूल्य (Previous Value)</th>
-                                    <th style={{ padding: '8px 10px', borderBottom: '1px solid #e2e8f0', width: '38%' }}>नवीन मूल्य (Current Value)</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {entry.changes?.map((ch, chIdx) => (
-                                    <tr key={chIdx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                      <td style={{ padding: '10px', fontWeight: '600', color: '#1e293b' }}>
-                                        {ch.label}
-                                      </td>
-                                      <td style={{ padding: '10px', color: '#dc2626', textDecoration: 'line-through', background: '#fff8f8' }}>
-                                        {ch.previousValue}
-                                      </td>
-                                      <td style={{ padding: '10px', color: '#16a34a', fontWeight: '700', background: '#f0fdf4' }}>
-                                        {ch.currentValue}
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  /* ================= Normal Clean View Mode ================= */
-                  <div style={{ transform: 'scale(0.88)', transformOrigin: 'top center' }}>
-                    <InvoiceTemplate bill={activeBill} />
-                  </div>
-                )
+                /* ================= Normal Clean View Mode ================= */
+                <div style={{ transform: 'scale(0.88)', transformOrigin: 'top center' }}>
+                  <InvoiceTemplate bill={activeBill} />
+                </div>
               ) : (
                 /* ================= RED EDIT / UPDATE MODE ================= */
                 <div style={{ width: '100%' }}>

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   clearDashboardMetricsCache,
@@ -8,7 +8,6 @@ import {
 } from '../service/googleSheetsService';
 import { cleanMobileNumber } from '../service/billingService';
 import { useAuth } from '../context/AuthContext';
-import { buildDashboardAnalytics } from '../utils/dashboardAnalytics';
 import '../CSS/dashboard.css';
 
 const formatMoney = (amount) => `₹ ${Number(amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
@@ -16,6 +15,26 @@ const readField = (record, ...keys) => {
   for (const key of keys) if (record?.[key] !== undefined && record[key] !== '') return record[key];
   return '';
 };
+const dateInputValue = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+function getDashboardDateRange(period, selectedMonth) {
+  const today = new Date();
+  const end = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  let start = new Date(end);
+  if (period === 'week') {
+    start.setDate(end.getDate() - ((end.getDay() + 6) % 7));
+  } else if (period === 'month') {
+    start = new Date(end.getFullYear(), end.getMonth(), 1);
+  } else if (period === 'lastMonth') {
+    start = new Date(end.getFullYear(), end.getMonth() - 1, 1);
+    end.setDate(0);
+  } else if (period === 'selectedMonth') {
+    const [year, month] = selectedMonth.split('-').map(Number);
+    start = new Date(year, month - 1, 1);
+    end.setTime(new Date(year, month, 0).getTime());
+  }
+  return { startDate: dateInputValue(start), endDate: dateInputValue(end) };
+}
 
 function challanStatus(challan) {
   const status = String(readField(challan, 'status', 'Status', 'deliveryStatus', 'Delivery_Status') || '').toLowerCase();
@@ -32,58 +51,87 @@ export default function AdminDashboard() {
   const [refreshError, setRefreshError] = useState('');
   const [savedAt, setSavedAt] = useState('');
   const [period, setPeriod] = useState('month');
-  const [fromMonth, setFromMonth] = useState(() => new Date().toISOString().slice(0, 7));
-  const [toMonth, setToMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [selectedMonth, setSelectedMonth] = useState(() => dateInputValue(new Date()).slice(0, 7));
   const [categoryFilter, setCategoryFilter] = useState('all');
-  const [trendPeriod, setTrendPeriod] = useState('week');
   const [categoryLimit, setCategoryLimit] = useState('5');
   const [billSearch, setBillSearch] = useState('');
+  const [debouncedBillSearch, setDebouncedBillSearch] = useState('');
   const [billStatus, setBillStatus] = useState('all');
   const [billLimit, setBillLimit] = useState('5');
+  const [billPage, setBillPage] = useState(1);
   const [dueSearch, setDueSearch] = useState('');
   const [minimumDue, setMinimumDue] = useState('0');
   const [dueSort, setDueSort] = useState('high');
   const [dueLimit, setDueLimit] = useState('10');
   const [challanFilter, setChallanFilter] = useState('all');
   const [stockFilter, setStockFilter] = useState('all');
+  const requestSequence = useRef(0);
+  const { startDate, endDate } = getDashboardDateRange(period, selectedMonth);
+  const queryKey = JSON.stringify([startDate, endDate, categoryFilter, debouncedBillSearch, billStatus, billPage, billLimit]);
 
   const refreshMetrics = useCallback(async () => {
     if (!user?.id) return;
+    const requestId = ++requestSequence.current;
     setRefreshing(true);
     setRefreshError('');
     try {
-      const freshMetrics = await getDashboardMetrics();
-      setMetrics(freshMetrics);
+      const freshMetrics = await getDashboardMetrics({
+        startDate,
+        endDate,
+        category: categoryFilter,
+        search: debouncedBillSearch,
+        status: billStatus,
+        page: billPage,
+        limit: Number(billLimit),
+      });
+      if (requestId !== requestSequence.current) return;
+      const cacheMetrics = { ...freshMetrics, _queryKey: queryKey };
+      setMetrics(cacheMetrics);
       setSavedAt(new Date().toISOString());
       try {
-        setDashboardMetricsCache(user.id, freshMetrics);
+        setDashboardMetricsCache(user.id, cacheMetrics);
       } catch (cacheError) {
         console.error('Dashboard cache could not be saved:', cacheError);
         setRefreshError('ताजा डेटा लोड झाला, पण डॅशबोर्ड कॅश साठवता आला नाही.');
       }
     } catch (error) {
+      if (requestId !== requestSequence.current) return;
       console.error('Dashboard refresh failed:', error);
       setRefreshError(error.message || 'डॅशबोर्ड डेटा अद्ययावत करता आला नाही.');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (requestId === requestSequence.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  }, [user?.id]);
+  }, [user?.id, startDate, endDate, categoryFilter, debouncedBillSearch, billStatus, billPage, billLimit, queryKey]);
 
   useEffect(() => {
     const cached = getDashboardMetricsCache(user?.id);
-    if (cached) {
+    if (cached?.metrics?._queryKey === queryKey) {
       setMetrics(cached.metrics);
       setSavedAt(cached.savedAt);
       setLoading(false);
     } else {
-      setMetrics(null);
       setLoading(true);
     }
-    refreshMetrics();
-  }, [user?.id, refreshMetrics]);
+  }, [user?.id, queryKey]);
 
-  const dashboardMetrics = metrics || {};
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedBillSearch(billSearch.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [billSearch]);
+
+  useEffect(() => {
+    setBillPage(1);
+  }, [startDate, endDate, categoryFilter, debouncedBillSearch, billStatus, billLimit]);
+
+  useEffect(() => {
+    refreshMetrics();
+  }, [refreshMetrics]);
+
+  const activeMetrics = metrics?._queryKey === queryKey ? metrics : null;
+  const dashboardMetrics = activeMetrics || {};
   const {
     totalChallans = 0,
     totalInventoryProducts = 0,
@@ -93,40 +141,24 @@ export default function AdminDashboard() {
     pendingKhata = [],
     totalCustomers = 0,
     bills = [],
+    selectedTotals = { sales: 0, paid: 0, due: 0 },
+    chartData = [],
+    categoryData = [],
+    billPagination = { page: 1, limit: Number(billLimit), total: 0, totalPages: 1 },
+    totalBills = 0,
     challans = [],
     categories = []
   } = dashboardMetrics;
 
-  const analytics = useMemo(() => buildDashboardAnalytics({
-    metrics: dashboardMetrics,
-    period,
-    fromMonth,
-    toMonth,
-    categoryFilter
-  }), [dashboardMetrics, period, fromMonth, toMonth, categoryFilter]);
-  const trendAnalytics = useMemo(() => buildDashboardAnalytics({
-    metrics: dashboardMetrics,
-    period: trendPeriod,
-    categoryFilter
-  }), [dashboardMetrics, trendPeriod, categoryFilter]);
-
-  const { filteredBills, selectedTotals } = analytics;
-  const totalBills = filteredBills.length;
   const averageBill = totalBills ? selectedTotals.sales / totalBills : 0;
   const paidPercent = selectedTotals.sales > 0
     ? Math.min(100, Math.round(selectedTotals.paid / selectedTotals.sales * 100))
     : 0;
   const creditPercent = selectedTotals.sales > 0 ? 100 - paidPercent : 0;
-  const visibleCategories = analytics.categoryData.slice(0, Number(categoryLimit));
-
-  const recentBills = useMemo(() => filteredBills
-    .filter((bill) => {
-      const matchesText = `${bill.billNo} ${bill.customerName}`.toLowerCase().includes(billSearch.trim().toLowerCase());
-      const isDue = Number(bill._filteredDue) > 0;
-      return matchesText && (billStatus === 'all' || (billStatus === 'due' ? isDue : !isDue));
-    })
-    .sort((a, b) => new Date(b.billDate) - new Date(a.billDate))
-    .slice(0, Number(billLimit)), [filteredBills, billSearch, billStatus, billLimit]);
+  const visibleCategories = categoryData.slice(0, Number(categoryLimit));
+  const categoryChartMax = Math.max(1, ...categoryData.map((item) => item[1]));
+  const trendChartMax = Math.max(1, ...chartData.map((item) => item.value));
+  const recentBills = bills;
 
   const visibleDues = useMemo(() => pendingKhata
     .filter((customer) => Number(customer.balanceUdhaari) >= Number(minimumDue || 0))
@@ -149,11 +181,11 @@ export default function AdminDashboard() {
     setSavedAt('');
   };
 
-  if (loading && !metrics) {
+  if (loading && !activeMetrics) {
     return <div className="dashboard-loading" role="status">डॅशबोर्ड डेटा लोड होत आहे…</div>;
   }
 
-  if (!metrics) {
+  if (!activeMetrics) {
     return (
       <div className="dashboard-page">
         <section className="dashboard-empty">
@@ -204,17 +236,16 @@ export default function AdminDashboard() {
         </div>
         <label>कालावधी
           <select value={period} onChange={(event) => setPeriod(event.target.value)}>
-            <option value="day">आज</option>
-            <option value="week">मागील ७ दिवस</option>
+            <option value="today">आज</option>
+            <option value="week">हा आठवडा</option>
             <option value="month">हा महिना</option>
-            <option value="year">हे वर्ष</option>
-            <option value="custom">महिन्यांची तारीख</option>
+            <option value="lastMonth">मागील महिना</option>
+            <option value="selectedMonth">महिना निवडा</option>
           </select>
         </label>
-        {period === 'custom' && <>
-          <label>पासून <input type="month" value={fromMonth} max={toMonth} onChange={(event) => setFromMonth(event.target.value)} /></label>
-          <label>पर्यंत <input type="month" value={toMonth} min={fromMonth} onChange={(event) => setToMonth(event.target.value)} /></label>
-        </>}
+        {period === 'selectedMonth' && <label>महिना <input type="month" value={selectedMonth} onChange={(event) => {
+          if (event.target.value) setSelectedMonth(event.target.value);
+        }} /></label>}
         <label>उत्पादन श्रेणी
           <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
             <option value="all">सर्व श्रेणी</option>
@@ -259,23 +290,18 @@ export default function AdminDashboard() {
         <article className="dashboard-card">
           <div className="dashboard-card-heading">
             <div><span className="dashboard-section-kicker">विक्री विश्लेषण</span><h2>विक्रीचा कल</h2></div>
-            <label className="dashboard-compact-filter" aria-label="विक्री कल कालावधी">
-              <select value={trendPeriod} onChange={(event) => setTrendPeriod(event.target.value)}>
-                <option value="week">७ दिवस</option><option value="month">हा महिना</option><option value="year">हे वर्ष</option>
-              </select>
-            </label>
+            <span className="dashboard-filter-note">{startDate} – {endDate}</span>
           </div>
           <div className="dashboard-chart" aria-label="निवडलेल्या कालावधीतील विक्री">
-            {trendAnalytics.chartData.map((point) => {
-              const max = Math.max(1, ...trendAnalytics.chartData.map((item) => item.value));
-              const height = Math.max(4, point.value / max * 100);
+            {chartData.map((point) => {
+              const height = Math.max(4, point.value / trendChartMax * 100);
               return <div className="dashboard-chart-column" key={point.label} title={`${point.label}: ${formatMoney(point.value)}`}>
                 <strong>{point.value ? formatMoney(point.value) : ''}</strong>
                 <span className="dashboard-chart-bar" style={{ height: `${height}%` }} />
-                <small>{trendPeriod === 'year' ? point.label.slice(2) : point.label.slice(-2)}</small>
+                <small>{point.label.length === 7 ? point.label.slice(5) : point.label.slice(-2)}</small>
               </div>;
             })}
-            {!trendAnalytics.chartData.length && <p className="dashboard-muted">या काळात विक्री नाही.</p>}
+            {!chartData.length && <p className="dashboard-muted">या काळात विक्री नाही.</p>}
           </div>
         </article>
 
@@ -290,10 +316,9 @@ export default function AdminDashboard() {
           </div>
           <div className="dashboard-category-list">
             {visibleCategories.map(([name, amount]) => {
-              const max = Math.max(1, ...analytics.categoryData.map((item) => item[1]));
               return <div className="dashboard-category-row" key={name}>
                 <div><span>{name}</span><strong>{formatMoney(amount)}</strong></div>
-                <div className="dashboard-progress-track"><span style={{ width: `${Math.max(2, amount / max * 100)}%` }} /></div>
+                <div className="dashboard-progress-track"><span style={{ width: `${Math.max(2, amount / categoryChartMax * 100)}%` }} /></div>
               </div>;
             })}
             {!visibleCategories.length && <p className="dashboard-muted">या निवडीत श्रेणीवार विक्री उपलब्ध नाही.</p>}
@@ -328,7 +353,7 @@ export default function AdminDashboard() {
               <option value="all">सर्व स्थिती</option><option value="due">बाकी असलेली</option><option value="paid">पूर्ण भरलेली</option>
             </select>
             <select value={billLimit} onChange={(event) => setBillLimit(event.target.value)} aria-label="दाखवायची बिले">
-              <option value="5">५ बिले</option><option value="10">१० बिले</option>
+              <option value="5">५ बिले</option><option value="10">१० बिले</option><option value="25">२५ बिले</option>
             </select>
           </div>
           <div className="dashboard-table-wrap">
@@ -345,6 +370,11 @@ export default function AdminDashboard() {
                 {!recentBills.length && <tr><td colSpan="5" className="dashboard-empty-cell">या फिल्टरशी जुळणारी बिले नाहीत.</td></tr>}
               </tbody>
             </table>
+          </div>
+          <div className="dashboard-widget-filters dashboard-pagination">
+            <span className="dashboard-filter-note">{billPagination.total} जुळणारी बिले · पान {billPagination.page}/{billPagination.totalPages}</span>
+            <button type="button" className="dashboard-button is-light" onClick={() => setBillPage((page) => Math.max(1, page - 1))} disabled={billPagination.page <= 1 || refreshing}>मागील</button>
+            <button type="button" className="dashboard-button is-light" onClick={() => setBillPage((page) => Math.min(billPagination.totalPages, page + 1))} disabled={billPagination.page >= billPagination.totalPages || refreshing}>पुढील</button>
           </div>
         </article>
 

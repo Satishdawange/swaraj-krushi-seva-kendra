@@ -8,10 +8,9 @@ import {
   CheckCircle2,
   Leaf,
   ShieldCheck,
-  Truck,
+  MapPin,
   MessageCircle,
   Phone,
-  MapPin,
   Search
 } from '../components/Icons';
 
@@ -162,7 +161,7 @@ export default function Home() {
 
         <div>
 
-          <Truck />
+          <MapPin />
 
           <b>
             सुलभ उपलब्धता
@@ -423,4 +422,3 @@ export default function Home() {
     </>
   );
 }
-
