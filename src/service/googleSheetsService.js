@@ -83,7 +83,12 @@ export function initLocalDatabase() {
   if (!localStorage.getItem(STORAGE_KEYS.INVENTORY)) {
     writeStorage(STORAGE_KEYS.INVENTORY, getInitialInventory());
   }
-  localStorage.removeItem(STORAGE_KEYS.USERS);
+  if (!localStorage.getItem(STORAGE_KEYS.USERS)) {
+    writeStorage(STORAGE_KEYS.USERS, [
+      { id: 'admin', username: 'admin', password: 'admin123', role: 'admin', fullName: 'निलेश दवंगे (Admin)', mobile: '8459568940', createdAt: new Date().toISOString() },
+      { id: 'staff', username: 'staff', password: 'staff123', role: 'staff', fullName: 'काउंटर ऑपरेटर', mobile: '9876543210', createdAt: new Date().toISOString() }
+    ]);
+  }
   if (!localStorage.getItem(STORAGE_KEYS.BILLS)) {
     writeStorage(STORAGE_KEYS.BILLS, []);
   }
@@ -875,9 +880,72 @@ export async function saveBillWithInventoryDeduction(billData) {
 
     customers[mobile] = existingCust;
     writeStorage(STORAGE_KEYS.CUSTOMERS, customers);
+
+    // 3. User Account Update for Customer in users tab / database
+    // If mobile number is not added as id in users, add entry where id, username, password = mobile, role = customer
+    if (mobile.length === 10) {
+      const users = readStorage(STORAGE_KEYS.USERS, []);
+      const exists = users.some(
+        (u) =>
+          String(u.id || "").replace(/\D/g, "").slice(-10) === mobile ||
+          String(u.username || "").trim().toLowerCase() === mobile ||
+          String(u.mobile || "").replace(/\D/g, "").slice(-10) === mobile
+      );
+      if (!exists) {
+        const newUser = {
+          id: mobile,
+          username: mobile,
+          password: mobile,
+          role: "customer",
+          fullName: billData.customerName || "ग्राहक",
+          mobile: mobile,
+          createdAt: new Date().toISOString(),
+        };
+        users.push(newUser);
+        writeStorage(STORAGE_KEYS.USERS, users);
+      }
+
+      // Also ensure customer user in Google Sheets Users tab
+      syncItemToSheets("ensureUser", {
+        mobile,
+        fullName: billData.customerName || "ग्राहक",
+      });
+    }
   }
 
   return { ...newBill, isLive };
+}
+
+// Ensure customer user exists in Users table (id, username, password = mobile, role = customer)
+export function ensureCustomerUserLocal(mobileRaw, customerName = "") {
+  const mobile = String(mobileRaw || "").replace(/\D/g, "").slice(-10);
+  if (!mobile || mobile.length < 10) return null;
+  const users = readStorage(STORAGE_KEYS.USERS, []);
+  const exists = users.find(
+    (u) =>
+      String(u.id || "").replace(/\D/g, "").slice(-10) === mobile ||
+      String(u.username || "").trim().toLowerCase() === mobile ||
+      String(u.mobile || "").replace(/\D/g, "").slice(-10) === mobile
+  );
+  if (!exists) {
+    const newUser = {
+      id: mobile,
+      username: mobile,
+      password: mobile,
+      role: "customer",
+      fullName: customerName || "ग्राहक",
+      mobile: mobile,
+      createdAt: new Date().toISOString(),
+    };
+    users.push(newUser);
+    writeStorage(STORAGE_KEYS.USERS, users);
+    syncItemToSheets("ensureUser", {
+      mobile,
+      fullName: customerName || "ग्राहक",
+    });
+    return newUser;
+  }
+  return exists;
 }
 
 // -----------------------------------------------------------------------------
@@ -1275,6 +1343,40 @@ export async function exportAllToGoogleSheet(webAppUrl) {
     message:
       "Sync request sent to Google Sheets. Check the sheet to confirm the data was saved.",
   };
+}
+
+// ─── Fetch ALL settings rows from the Google Sheet Settings tab ───────────────
+export async function fetchAllSheetSettings() {
+  try {
+    const rows = await fetchGoogleSheetRecords('Settings');
+    // Normalize: each row has key/name and value fields
+    return rows.map(row => ({
+      key: String(row.key || row.Key || row.name || row.Name || '').trim(),
+      value: String(row.value || row.Value || '').trim(),
+      description: String(row.description || row.Description || row.desc || '').trim(),
+      category: String(row.category || row.Category || 'General').trim(),
+    })).filter(r => r.key);
+  } catch (err) {
+    console.error('fetchAllSheetSettings error:', err);
+    throw err;
+  }
+}
+
+// ─── Save / Update a single setting key-value pair to Google Sheet ─────────────
+export async function saveSheetSetting(key, value) {
+  const config = getGoogleSheetsConfig();
+  if (!config.webAppUrl) throw new Error('Google Sheets not connected.');
+  // POST with no-cors (Apps Script limitation)
+  await fetch(config.webAppUrl, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({
+      action: 'updateSetting',
+      data: { key, value }
+    })
+  });
+  return { success: true };
 }
 
 // Return raw Google Apps Script template for the Admin UI copy button

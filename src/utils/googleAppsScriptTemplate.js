@@ -195,6 +195,36 @@ function handleRequest(e) {
         result = changeUserPassword(ss, params.token, params.currentPassword, params.newPassword);
         break;
         
+      case 'ensureUser':
+        result = (function() {
+          if (!params.data) return { success: false, error: 'No user data' };
+          const m = params.data.mobile || params.data.username || params.data.id;
+          ensureCustomerUser(ss, m, params.data.fullName || params.data.customerName || 'ग्राहक');
+          return { success: true };
+        })();
+        break;
+
+      case 'updateSetting':
+        result = (function() {
+          if (!params.data || !params.data.key) return { success: false, error: 'Key required' };
+          let setSheet = ss.getSheetByName(TABS.SETTINGS);
+          if (!setSheet) { initAllTabs(ss); setSheet = ss.getSheetByName(TABS.SETTINGS); }
+          const k = String(params.data.key).trim();
+          const v = String(params.data.value ?? '').trim();
+          const lr = setSheet.getLastRow();
+          if (lr > 1) {
+            const allK = setSheet.getRange(2, 1, lr - 1, 1).getValues().map(r => String(r[0]).trim().toLowerCase());
+            const idx = allK.indexOf(k.toLowerCase());
+            if (idx !== -1) {
+              setSheet.getRange(idx + 2, 2).setValue(v);
+              return { success: true, updated: true };
+            }
+          }
+          setSheet.appendRow([k, v, params.data.description || '']);
+          return { success: true, inserted: true };
+        })();
+        break;
+        
       case 'syncAll':
         result = bulkSyncData(ss, params.data);
         break;
@@ -1023,7 +1053,7 @@ function updateCustomerKhata(ss, bill) {
 
 function ensureCustomerUser(ss, mobile, fullName) {
   const normalizedMobile = String(mobile || '').replace(/\D/g, '').slice(-10);
-  if (!/^[6-9]\d{9}$/.test(normalizedMobile)) return;
+  if (!normalizedMobile || normalizedMobile.length < 10) return;
   let sheet = ss.getSheetByName(TABS.USERS);
   if (!sheet) {
     initAllTabs(ss);
@@ -1031,17 +1061,18 @@ function ensureCustomerUser(ss, mobile, fullName) {
   }
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   const keys = headers.map(normalizeHeader);
+  const idColumn = keys.findIndex(key => key === 'id');
   const mobileColumn = keys.findIndex(key => key === 'mobile');
   const usernameColumn = keys.findIndex(key => key === 'username');
   const values = headers.map(header => {
     const key = normalizeHeader(header);
-    if (key === 'id') return 'CUST-' + normalizedMobile;
+    if (key === 'id') return normalizedMobile;
     if (key === 'username') return normalizedMobile;
     if (key === 'password') return normalizedMobile;
-    if (key === 'role') return 'customer';
+    if (key === 'role' || key === 'type') return 'customer';
     if (key === 'fullname' || key === 'name' || key === 'customername') return fullName || 'ग्राहक';
     if (key === 'mobile') return normalizedMobile;
-    if (key === 'createdat') return new Date().toISOString();
+    if (key === 'createdat' || key === 'date') return new Date().toISOString();
     return '';
   });
   const lock = LockService.getScriptLock();
@@ -1050,8 +1081,9 @@ function ensureCustomerUser(ss, mobile, fullName) {
     if (sheet.getLastRow() > 1) {
       const users = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
       const exists = users.some(row =>
+        (idColumn >= 0 && String(row[idColumn]).replace(/\D/g, '').slice(-10) === normalizedMobile) ||
         (mobileColumn >= 0 && String(row[mobileColumn]).replace(/\D/g, '').slice(-10) === normalizedMobile) ||
-        (usernameColumn >= 0 && String(row[usernameColumn]).trim() === normalizedMobile)
+        (usernameColumn >= 0 && String(row[usernameColumn]).trim().toLowerCase() === normalizedMobile)
       );
       if (exists) return;
     }
@@ -1149,7 +1181,7 @@ function authenticateUser(ss, username, password) {
   const idColumn = columns.indexOf('id');
   const usernameColumn = columns.indexOf('username');
   const passwordColumn = columns.indexOf('password');
-  const roleColumn = columns.indexOf('role');
+  const roleColumn = columns.findIndex(key => ['role', 'type'].includes(key));
   const nameColumn = columns.findIndex(key => ['fullname', 'name', 'customername'].includes(key));
   const mobileColumn = columns.indexOf('mobile');
   if ([idColumn, usernameColumn, passwordColumn, roleColumn].some(column => column < 0)) {
@@ -1162,9 +1194,10 @@ function authenticateUser(ss, username, password) {
   for (let i = 0; i < users.length; i++) {
     const rowU = String(users[i][usernameColumn]).trim().toLowerCase();
     const rowP = String(users[i][passwordColumn]).trim();
-    const rowMobile = mobileColumn >= 0 ? String(users[i][mobileColumn]).trim() : '';
+    const rowMobile = mobileColumn >= 0 ? String(users[i][mobileColumn]).replace(/\D/g, '').slice(-10) : '';
+    const rowId = idColumn >= 0 ? String(users[i][idColumn]).trim().toLowerCase() : '';
     
-    if ((rowU === u || rowMobile === u) && rowP === p) {
+    if ((rowU === u || rowMobile === u || rowId === u) && rowP === p) {
       const user = {
         id: users[i][idColumn],
         username: users[i][usernameColumn],

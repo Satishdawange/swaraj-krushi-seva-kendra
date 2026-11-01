@@ -114,7 +114,6 @@ export default function BillHistory() {
   const handleOpenBill = (bill) => {
     setActiveBill(normalizeBillRow(bill));
     setIsEditMode(false);
-    setViewActivityLog(false);
     setUpdateSuccess(false);
     setModalOpen(true);
   };
