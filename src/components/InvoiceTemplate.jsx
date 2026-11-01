@@ -1,9 +1,12 @@
 import React, { forwardRef } from 'react';
 import LogoImg from '../images/sksklogo.png';
 import { numberToMarathiWords } from '../service/billingService';
+import { getShopInfo } from '../service/shopService';
 
 const InvoiceTemplate = forwardRef(({ bill }, ref) => {
   if (!bill) return null;
+
+  const shop = getShopInfo();
 
   const {
     billNo = 'SKSK-DRAFT',
@@ -87,7 +90,7 @@ const InvoiceTemplate = forwardRef(({ bill }, ref) => {
               color: '#176b3a',
               lineHeight: '1.1'
             }}>
-              स्वराज कृषी सेवा केंद्र
+              {shop.fullName || 'स्वराज कृषी सेवा केंद्र'}
             </h1>
             <div style={{
               fontSize: '13px',
@@ -95,7 +98,7 @@ const InvoiceTemplate = forwardRef(({ bill }, ref) => {
               color: '#2d4b35',
               letterSpacing: '0.4px'
             }}>
-              SWARAJ KRUSHI SEVA KENDRA
+              {shop.name ? shop.name.toUpperCase() : 'SWARAJ KRUSHI SEVA KENDRA'}
             </div>
             <div style={{ fontSize: '11px', color: '#4a5d50', marginTop: '2px' }}>
               खते, बी-बियाणे, कीटकनाशके व आधुनिक कृषी सल्ला केंद्र
@@ -111,26 +114,42 @@ const InvoiceTemplate = forwardRef(({ bill }, ref) => {
           lineHeight: '1.5'
         }}>
           <div>
-            <strong>प्रोप्रायटर:</strong> निलेश त्र्यंबक दवंगे
+            <strong>प्रोप्रायटर:</strong> {shop.ownerName || 'निलेश त्र्यंबक दवंगे'}
           </div>
           <div>
-            <strong>मोबाईल:</strong> +९१ ८४५९५६८९४०
+            <strong>मोबाईल:</strong> {shop.phone || '+९१ ८४५९५६८९४०'}
           </div>
           <div style={{ maxWidth: '240px', marginTop: '2px' }}>
-            मु. पो. कानमंडाळे, ता. चांदवड, जि. नाशिक (४२३११७)
+            {shop.address || 'मु. पो. कानमंडाळे, ता. चांदवड, जि. नाशिक'} {shop.pincode ? `(${shop.pincode})` : ''}
           </div>
-          <div style={{
-            display: 'inline-block',
-            marginTop: '4px',
-            padding: '2px 6px',
-            background: '#eaf5eb',
-            color: '#176b3a',
-            borderRadius: '4px',
-            fontWeight: '600',
-            fontSize: '10px'
-          }}>
-            GSTIN: Pending (लवकरच अद्यतनित)
-          </div>
+          {shop.gstNumber ? (
+            <div style={{
+              display: 'inline-block',
+              marginTop: '4px',
+              padding: '2px 8px',
+              background: '#eaf5eb',
+              color: '#137333',
+              borderRadius: '4px',
+              fontWeight: '700',
+              fontSize: '11px',
+              border: '1px solid #b6e0be'
+            }}>
+              GSTIN: <strong>{shop.gstNumber}</strong>
+            </div>
+          ) : (
+            <div style={{
+              display: 'inline-block',
+              marginTop: '4px',
+              padding: '2px 6px',
+              background: '#f4f6f4',
+              color: '#6e8173',
+              borderRadius: '4px',
+              fontWeight: '600',
+              fontSize: '10px'
+            }}>
+              GSTIN: Pending (नोंदणी प्रक्रियेत)
+            </div>
+          )}
         </div>
       </div>
 

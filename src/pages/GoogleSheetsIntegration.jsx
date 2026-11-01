@@ -1,3 +1,4 @@
+import { triggerSavePopup } from '../components/SavePopup';
 import React, { useState, useEffect } from 'react';
 import {
   getGoogleSheetsConfig,
@@ -6,7 +7,9 @@ import {
   exportAllToGoogleSheet,
   getScriptTemplateCode,
   fetchAllSheetSettings,
-  saveSheetSetting
+  saveSheetSetting,
+  fetchAllSheetCategories,
+  saveSheetCategory
 } from '../service/googleSheetsService';
 import '../CSS/billing.css';
 
@@ -91,6 +94,14 @@ function PropertiesTab() {
       localStorage.setItem('sksk_sheet_settings_cache', JSON.stringify(updated));
       setEditingKey(null);
       setSaveMsg(`✅ "${key}" सेव्ह केले!`);
+      triggerSavePopup({
+        title: 'सेटिंग जतन झाली! ✓',
+        message: `"${key}" ची मूल्य सेटिंग Google Sheet मधील Settings टॅबमध्ये सेव्ह झाली.`,
+        details: [
+          { label: 'सेटिंग की', value: key },
+          { label: 'मूल्य (Value)', value: editingValue || '(रिकामी)' }
+        ]
+      });
       setTimeout(() => setSaveMsg(''), 3000);
     } catch (err) {
       alert('सेव्ह करताना त्रुटी: ' + err.message);
@@ -318,6 +329,457 @@ function PropertiesTab() {
   );
 }
 
+
+// ─── CategoriesTab sub-component ─────────────────────────────────────────────
+function CategoriesTab() {
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState(null);
+  const [formData, setFormData] = useState({
+    id: '',
+    name: '',
+    nameEn: '',
+    sortOrder: 1,
+    isActive: true
+  });
+  const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState('');
+  const [saveError, setSaveError] = useState('');
+
+  const loadCategories = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const data = await fetchAllSheetCategories();
+      setCategories(data);
+    } catch (err) {
+      setError(err.message || 'श्रेणी लोड करताना त्रुटी आली.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadCategories();
+  }, []);
+
+  const handleOpenAddModal = () => {
+    const nextOrder = categories.length > 0 
+      ? Math.max(...categories.map(c => Number(c.sortOrder) || 0)) + 1 
+      : 1;
+    setEditingItem(null);
+    setFormData({
+      id: 'cat_' + Date.now().toString().slice(-6),
+      name: '',
+      nameEn: '',
+      sortOrder: nextOrder,
+      isActive: true
+    });
+    setSaveSuccess('');
+    setSaveError('');
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEditModal = (cat) => {
+    setEditingItem(cat);
+    setFormData({
+      id: cat.id || '',
+      name: cat.name || '',
+      nameEn: cat.nameEn || '',
+      sortOrder: cat.sortOrder ?? 1,
+      isActive: cat.isActive !== false
+    });
+    setSaveSuccess('');
+    setSaveError('');
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setEditingItem(null);
+  };
+
+  const handleSaveCategory = async (e) => {
+    e.preventDefault();
+    if (!formData.name.trim()) {
+      setSaveError('कृपया श्रेणीचे मराठी नाव प्रविष्ट करा.');
+      return;
+    }
+    setSaving(true);
+    setSaveError('');
+    setSaveSuccess('');
+    try {
+      await saveSheetCategory(formData);
+      setSaveSuccess(editingItem ? 'श्रेणी यशस्वीरीत्या अद्ययावत केली!' : 'नवीन श्रेणी यशस्वीरीत्या जोडली!');
+      triggerSavePopup({
+        title: editingItem ? 'श्रेणी अपडेट झाली! ✓' : 'नवीन श्रेणी जोडली! 🎉',
+        message: `"${formData.name}" श्रेणी Google Sheet Categories टॅबमध्ये सुरक्षित सेव्ह झाली.`,
+        details: [
+          { label: 'आयडी', value: formData.id },
+          { label: 'मराठी नाव', value: formData.name },
+          { label: 'इंग्रजी नाव', value: formData.nameEn || '—' },
+          { label: 'क्रम', value: String(formData.sortOrder) }
+        ]
+      });
+      // Update local state immediately
+      setCategories(prev => {
+        const exists = prev.some(c => c.id === formData.id);
+        if (exists) {
+          return prev.map(c => c.id === formData.id ? { ...c, ...formData } : c);
+        } else {
+          return [...prev, { ...formData }];
+        }
+      });
+      setTimeout(() => {
+        setIsModalOpen(false);
+        setEditingItem(null);
+        setSaveSuccess('');
+      }, 900);
+    } catch (err) {
+      setSaveError(err.message || 'श्रेणी सेव्ह करताना त्रुटी आली.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const filteredCategories = categories.filter(c => {
+    const q = search.toLowerCase();
+    return (
+      (c.name && c.name.toLowerCase().includes(q)) ||
+      (c.nameEn && c.nameEn.toLowerCase().includes(q)) ||
+      (c.id && c.id.toLowerCase().includes(q))
+    );
+  });
+
+  return (
+    <div>
+      {/* Top Header & Actions */}
+      <div style={{
+        display: 'flex', flexWrap: 'wrap',
+        alignItems: 'center', justifyContent: 'space-between',
+        gap: '12px', marginBottom: '20px'
+      }}>
+        <div>
+          <h2 style={{ margin: '0 0 4px', fontSize: '18px', color: '#176b3a', fontWeight: '800' }}>
+            🏷️ उत्पादन श्रेणी व्यवस्थापन (Categories Sheet)
+          </h2>
+          <p style={{ margin: 0, fontSize: '12.5px', color: '#65776d' }}>
+            Google Sheet मधील 'Categories' टॅबमधून श्रेणी पहा, नवीन श्रेणी जोडा किंवा संपादित करा.
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button
+            onClick={loadCategories}
+            disabled={loading}
+            style={{
+              padding: '8px 14px', borderRadius: '8px',
+              border: '1px solid #dce8de', background: '#f8faf9',
+              fontSize: '12.5px', fontWeight: '700', color: '#2d3748',
+              cursor: loading ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {loading ? '⏳ लोड होत आहे...' : '🔄 रिफ्रेश'}
+          </button>
+
+          <button
+            onClick={handleOpenAddModal}
+            style={{
+              padding: '8px 16px', borderRadius: '8px',
+              border: 'none', background: '#176b3a',
+              fontSize: '12.5px', fontWeight: '700', color: '#ffffff',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+              boxShadow: '0 2px 6px rgba(23,107,58,0.2)'
+            }}
+          >
+            <span>➕</span> नवीन श्रेणी जोडा
+          </button>
+        </div>
+      </div>
+
+      {/* Filter / Search Bar */}
+      <div style={{ marginBottom: '16px' }}>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="🔍 श्रेणी शोधा (नाव किंवा आयडी)..."
+          style={{
+            width: '100%', maxWidth: '360px',
+            padding: '9px 14px', borderRadius: '8px',
+            border: '1px solid #dce8de', fontSize: '13px',
+            outline: 'none', background: '#fafcfa'
+          }}
+        />
+      </div>
+
+      {error && (
+        <div style={{
+          padding: '12px 16px', borderRadius: '8px',
+          background: '#fde8e8', color: '#c81e1e',
+          fontSize: '13px', marginBottom: '16px'
+        }}>
+          ⚠️ {error}
+        </div>
+      )}
+
+      {/* Categories Table */}
+      <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '10px' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+          <thead>
+            <tr style={{ background: '#f1f5f2', borderBottom: '2px solid #dce8de', color: '#2d3748' }}>
+              <th style={{ padding: '12px 14px', fontWeight: '700' }}>आयडी (ID)</th>
+              <th style={{ padding: '12px 14px', fontWeight: '700' }}>मराठी नाव (Name MR)</th>
+              <th style={{ padding: '12px 14px', fontWeight: '700' }}>इंग्रजी नाव (Name EN)</th>
+              <th style={{ padding: '12px 14px', fontWeight: '700', textAlign: 'center' }}>क्रम (Order)</th>
+              <th style={{ padding: '12px 14px', fontWeight: '700', textAlign: 'center' }}>स्थिती (Status)</th>
+              <th style={{ padding: '12px 14px', fontWeight: '700', textAlign: 'center' }}>क्रिया (Action)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading && categories.length === 0 ? (
+              <tr>
+                <td colSpan="6" style={{ padding: '32px', textAlign: 'center', color: '#718096' }}>
+                  ⏳ Google Sheet मधून श्रेणी लोड होत आहेत...
+                </td>
+              </tr>
+            ) : filteredCategories.length === 0 ? (
+              <tr>
+                <td colSpan="6" style={{ padding: '32px', textAlign: 'center', color: '#718096' }}>
+                  कोणतीही श्रेणी आढळली नाही.
+                </td>
+              </tr>
+            ) : (
+              filteredCategories.map((cat, idx) => (
+                <tr
+                  key={cat.id || idx}
+                  style={{
+                    borderBottom: '1px solid #edf2f7',
+                    background: idx % 2 === 0 ? '#ffffff' : '#fafbfa'
+                  }}
+                >
+                  <td style={{ padding: '12px 14px', fontFamily: 'monospace', fontWeight: '600', color: '#4a5568' }}>
+                    {cat.id}
+                  </td>
+                  <td style={{ padding: '12px 14px', fontWeight: '700', color: '#176b3a' }}>
+                    {cat.name}
+                  </td>
+                  <td style={{ padding: '12px 14px', color: '#4a5568' }}>
+                    {cat.nameEn || '—'}
+                  </td>
+                  <td style={{ padding: '12px 14px', textAlign: 'center', fontWeight: '600' }}>
+                    {cat.sortOrder ?? '—'}
+                  </td>
+                  <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                    <span style={{
+                      display: 'inline-block',
+                      padding: '3px 10px',
+                      borderRadius: '12px',
+                      fontSize: '11.5px',
+                      fontWeight: '700',
+                      background: cat.isActive !== false ? '#def7ec' : '#fde8e8',
+                      color: cat.isActive !== false ? '#03543f' : '#9b1c1c'
+                    }}>
+                      {cat.isActive !== false ? 'सक्रिय' : 'बंद'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                    <button
+                      onClick={() => handleOpenEditModal(cat)}
+                      style={{
+                        padding: '5px 12px', borderRadius: '6px',
+                        border: '1px solid #cbd5e0', background: '#ffffff',
+                        fontSize: '12px', fontWeight: '600', color: '#2b6cb0',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      ✏️ संपादन
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Add / Edit Category Modal */}
+      {isModalOpen && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 9999, padding: '16px'
+        }}>
+          <div style={{
+            background: '#ffffff', borderRadius: '14px',
+            width: '100%', maxWidth: '500px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)',
+            overflow: 'hidden'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '16px 20px',
+              background: '#176b3a', color: '#ffffff',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+            }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '700' }}>
+                {editingItem ? '✏️ श्रेणी संपादन करा' : '➕ नवीन श्रेणी जोडा'}
+              </h3>
+              <button
+                onClick={handleCloseModal}
+                disabled={saving}
+                style={{
+                  background: 'transparent', border: 'none',
+                  color: '#ffffff', fontSize: '20px', cursor: 'pointer', lineHeight: 1
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleSaveCategory} style={{ padding: '20px' }}>
+              {saveSuccess && (
+                <div style={{
+                  padding: '10px 14px', borderRadius: '8px',
+                  background: '#def7ec', color: '#03543f',
+                  fontSize: '13px', marginBottom: '14px', fontWeight: '600'
+                }}>
+                  ✅ {saveSuccess}
+                </div>
+              )}
+              {saveError && (
+                <div style={{
+                  padding: '10px 14px', borderRadius: '8px',
+                  background: '#fde8e8', color: '#9b1c1c',
+                  fontSize: '13px', marginBottom: '14px'
+                }}>
+                  ⚠️ {saveError}
+                </div>
+              )}
+
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontSize: '12.5px', fontWeight: '700', color: '#4a5568', marginBottom: '6px' }}>
+                  श्रेणी आयडी (Category ID):
+                </label>
+                <input
+                  type="text"
+                  value={formData.id}
+                  onChange={(e) => setFormData({ ...formData, id: e.target.value })}
+                  required
+                  placeholder="उदा. fertilizers, seeds, pesticides"
+                  style={{
+                    width: '100%', padding: '9px 12px', borderRadius: '8px',
+                    border: '1px solid #cbd5e0', fontSize: '13px', boxSizing: 'border-box'
+                  }}
+                />
+                <span style={{ fontSize: '11px', color: '#718096' }}>
+                  इंग्रजीत एक शब्द किंवा कोड (उदा. खते = fertilizers)
+                </span>
+              </div>
+
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontSize: '12.5px', fontWeight: '700', color: '#4a5568', marginBottom: '6px' }}>
+                  मराठी नाव (Name in Marathi) *:
+                </label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  required
+                  placeholder="उदा. खते व पोषण, कीटकनाशके"
+                  style={{
+                    width: '100%', padding: '9px 12px', borderRadius: '8px',
+                    border: '1px solid #cbd5e0', fontSize: '13px', boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontSize: '12.5px', fontWeight: '700', color: '#4a5568', marginBottom: '6px' }}>
+                  इंग्रजी नाव (Name in English):
+                </label>
+                <input
+                  type="text"
+                  value={formData.nameEn}
+                  onChange={(e) => setFormData({ ...formData, nameEn: e.target.value })}
+                  placeholder="उदा. Fertilizers & Nutrition"
+                  style={{
+                    width: '100%', padding: '9px 12px', borderRadius: '8px',
+                    border: '1px solid #cbd5e0', fontSize: '13px', boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '16px', marginBottom: '20px' }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: '700', color: '#4a5568', marginBottom: '6px' }}>
+                    क्रम (Sort Order):
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.sortOrder}
+                    onChange={(e) => setFormData({ ...formData, sortOrder: Number(e.target.value) || 0 })}
+                    style={{
+                      width: '100%', padding: '9px 12px', borderRadius: '8px',
+                      border: '1px solid #cbd5e0', fontSize: '13px', boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', paddingTop: '20px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '700', color: '#2d3748', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={formData.isActive}
+                      onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+                      style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                    />
+                    सक्रिय आहे (Active)
+                  </label>
+                </div>
+              </div>
+
+              {/* Modal Buttons */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={handleCloseModal}
+                  disabled={saving}
+                  style={{
+                    padding: '9px 16px', borderRadius: '8px',
+                    border: '1px solid #cbd5e0', background: '#ffffff',
+                    fontSize: '13px', fontWeight: '600', color: '#4a5568',
+                    cursor: 'pointer'
+                  }}
+                >
+                  रद्द करा
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  style={{
+                    padding: '9px 20px', borderRadius: '8px',
+                    border: 'none', background: '#176b3a',
+                    fontSize: '13px', fontWeight: '700', color: '#ffffff',
+                    cursor: saving ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {saving ? '💾 जतन होत आहे...' : '💾 जतन करा (Save)'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function GoogleSheetsIntegration() {
   const [config, setConfig] = useState(getGoogleSheetsConfig());
@@ -398,6 +860,7 @@ export default function GoogleSheetsIntegration() {
   const TABS = [
     { id: 'connection', label: '🔗 जोडणी (Connection)' },
     { id: 'properties', label: '⚙️ Properties (Settings)' },
+    { id: 'categories', label: '🏷️ श्रेणी (Categories)' },
   ];
 
   return (
@@ -651,6 +1114,17 @@ export default function GoogleSheetsIntegration() {
           boxShadow: '0 2px 10px rgba(0,0,0,0.03)'
         }}>
           <PropertiesTab />
+        </div>
+      )}
+
+      {/* ── Tab: Categories ── */}
+      {activeTab === 'categories' && (
+        <div style={{
+          background: '#ffffff', borderRadius: '16px',
+          border: '1px solid #dce8de', padding: '24px',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.03)'
+        }}>
+          <CategoriesTab />
         </div>
       )}
     </div>

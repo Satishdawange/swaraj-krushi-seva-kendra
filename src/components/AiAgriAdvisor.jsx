@@ -5,6 +5,7 @@ import {
   getSelectedAiModel
 } from '../service/aiAgriService';
 import ShopProp from '../config/shopProps';
+import { getShopInfo } from '../service/shopService';
 import '../CSS/aiAdvisor.css';
 
 // Formats plain text, converts any **bold** into <strong>, cleans stray asterisks, and renders clean paragraphs
@@ -21,7 +22,7 @@ function FormattedAiText({ text }) {
         }
 
         const cleanLine = line.replace(/^###\s*/, '');
-        const parts = cleanLine.split(/(\*\*.*?\*\*)/g);
+        const parts = cleanLine.split(/(\*[\s\S]*?\*)/g);
 
         return (
           <div key={lineIdx} className="ai-text-line">
@@ -48,14 +49,15 @@ export default function AiAgriAdvisor() {
     {
       id: 1,
       sender: 'bot',
-      text: `🌱 राम राम शेतकरी मित्रांनो! 🙏\n\nमी स्वराज कृषी सेवा केंद्राचा अधिकृत AI कृषी सल्लागार आहे.\nआपल्या पिकावरील रोग, अळी, किंवा खत व्यवस्थापनाविषयी थेट विचारा.\n\n• पिकाचा प्रश्न टाईप करा, बोला (🎙️) किंवा फोटो (📷) पाठवा.\n💡 तुम्ही आधीच स्वराज कृषी सेवा केंद्रातून औषध खरेदी केले आहे का?\nवापर कसा करावा किंवा पाण्याचे प्रमाण आठवत नसेल तर खाली तुमचा १०-अंकी मोबाईल नंबर टाका — मी खरेदीचे बिल व डोस लगेच समजावून सांगेन!`,
-      image: null
+      text: `🌱 राम राम शेतकरी मित्रांनो! 🙏\n\nमी स्वराज कृषी सेवा केंद्राचा अधिकृत AI कृषी सल्लागार आहे.\nआपल्या पिकावरील रोग, अळी, किंवा खत व्यवस्थापनाविषयी थेट विचारा.\n\n• पिकाचा प्रश्न टाईप करा, बोला (🎙️), फोटो (📷) किंवा दस्तऐवज (📎) जोडा.\n💡 तुम्ही आधीच स्वराज कृषी सेवा केंद्रातून औषध खरेदी केले आहे का?\nवापर कसा करावा किंवा पाण्याचे प्रमाण आठवत नसेल तर खाली तुमचा १०-अंकी मोबाईल नंबर टाका — मी खरेदीचे बिल व डोस लगेच समजावून सांगेन!`,
+      image: null,
+      attachment: null
     }
   ]);
 
   const [inputText, setInputText] = useState('');
   const [isThinking, setIsThinking] = useState(false);
-  const [selectedImage, setSelectedImage] = useState(null);
+  const [selectedAttachment, setSelectedAttachment] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
 
   const openAiKey = getOpenAIKey();
@@ -63,7 +65,8 @@ export default function AiAgriAdvisor() {
   const [aiServiceOnline, setAiServiceOnline] = useState(null); // null=checking, true=online, false=offline
 
   const messagesContainerRef = useRef(null);
-  const fileInputRef = useRef(null);
+  const photoInputRef = useRef(null);
+  const docInputRef = useRef(null);
   const recognitionRef = useRef(null);
   const hasMountedMessagesRef = useRef(false);
 
@@ -162,51 +165,77 @@ export default function AiAgriAdvisor() {
     }
   };
 
-  const handleImageSelect = (e) => {
-    const file = e.target.files?.[0];
+  const handleFileProcess = (file) => {
     if (!file) return;
-    if (file.size > 4 * 1024 * 1024) {
-      alert('कृपया ४ MB पेक्षा लहान फोटो निवडा.');
+    if (file.size > 10 * 1024 * 1024) {
+      alert('कृपया १० MB पेक्षा लहान फाईल निवडा.');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setSelectedImage({
-        dataUrl: reader.result,
-        mimeType: file.type || 'image/jpeg'
-      });
-    };
-    reader.readAsDataURL(file);
+
+    const isImg = file.type.startsWith('image/');
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    const isText = file.type.startsWith('text/') || file.name.toLowerCase().endsWith('.txt') || file.name.toLowerCase().endsWith('.csv');
+
+    if (isText) {
+      const textReader = new FileReader();
+      textReader.onload = () => {
+        setSelectedAttachment({
+          name: file.name,
+          size: file.size,
+          type: file.type || 'text/plain',
+          isImage: false,
+          isPdf: false,
+          textContent: textReader.result ? String(textReader.result).slice(0, 8000) : '',
+          dataUrl: null
+        });
+      };
+      textReader.readAsText(file);
+    } else {
+      const urlReader = new FileReader();
+      urlReader.onload = () => {
+        setSelectedAttachment({
+          name: file.name,
+          size: file.size,
+          type: file.type || (isPdf ? 'application/pdf' : 'application/octet-stream'),
+          isImage: isImg,
+          isPdf: isPdf,
+          dataUrl: urlReader.result,
+          textContent: null
+        });
+      };
+      urlReader.readAsDataURL(file);
+    }
   };
 
   const handleSendMessage = async (customText = null) => {
     const query = (customText || inputText).trim();
-    if (!query && !selectedImage) return;
+    if (!query && !selectedAttachment) return;
+
+    const currentAttachment = selectedAttachment;
 
     const userMessage = {
       id: Date.now(),
       sender: 'user',
-      text: query || '📷 (पिकाचा फोटो पाठवला आहे)',
-      image: selectedImage?.dataUrl || null
+      text: query || (currentAttachment ? `📎 ${currentAttachment.name} फाईल पाठवली` : '📷 (पिकाचा फोटो पाठवला आहे)'),
+      image: currentAttachment?.isImage ? currentAttachment.dataUrl : null,
+      attachment: currentAttachment
     };
 
     setMessages((prev) => [...prev, userMessage]);
     setInputText('');
-    setSelectedImage(null);
+    setSelectedAttachment(null);
     setIsThinking(true);
 
     try {
-      // Build conversation history
-      const history = messages.slice(-6).map((m) => ({
-        sender: m.sender,
-        text: m.text,
-        image: m.image
-      }));
-
+      // Pass the complete session message history for contextual awareness
       const reply = await askAgriAdvisor(
-        query || 'कृपया या फोटोतील पिकाची पाहणी करून कीड, रोग आणि त्यावर योग्य उपाय सांगा.',
-        history,
-        { model: selectedModel, image: selectedImage }
+        query || (currentAttachment ? 'कृपया सोबत जोडलेली फाईल तपासून माहिती व योग्य सल्ला द्या.' : ''),
+        messages,
+        {
+          model: selectedModel,
+          attachment: currentAttachment,
+          image: currentAttachment?.isImage ? currentAttachment : null
+        }
       );
 
       const botMessage = {
@@ -214,6 +243,7 @@ export default function AiAgriAdvisor() {
         sender: 'bot',
         text: reply,
         image: null,
+        attachment: null,
         referralQuestion: query
       };
 
@@ -233,7 +263,6 @@ export default function AiAgriAdvisor() {
     }
   };
 
-  // Optional prompts help users get started without limiting the questions they can ask.
   const getSuggestions = () => [
     'How can I improve soil health?',
     'Help me identify a crop problem',
@@ -242,6 +271,23 @@ export default function AiAgriAdvisor() {
   ];
   const suggestions = getSuggestions();
 
+  // Status dot computation:
+  // - Yellow: while testing connection on mount (aiServiceOnline === null) OR while generating answer (isThinking === true)
+  // - Green: when connected and idle (aiServiceOnline === true && !isThinking)
+  // - Red: when offline or error (!isThinking && aiServiceOnline === false)
+  const isYellow = isThinking || aiServiceOnline === null;
+  const isGreen = !isThinking && aiServiceOnline === true;
+  const isRed = !isThinking && aiServiceOnline === false;
+
+  const dotColor = isYellow ? '#fbbc04' : (isGreen ? '#34a853' : '#ea4335');
+  const dotShadow = isYellow
+    ? '0 0 0 2px #fde9a2'
+    : (isGreen ? '0 0 0 2px #ceead6' : '0 0 0 2px #fcd0cf');
+  const dotTitle = isThinking
+    ? 'उत्तर शोधत आहे... (कृपया प्रतीक्षा करा)'
+    : (aiServiceOnline === null
+      ? 'AI कनेक्शन तपासत आहे...'
+      : (isGreen ? 'AI सेवा चालू आहे (तयार)' : 'AI सेवा बंद आहे / समस्या'));
 
   return (
     <div className="ai-advisor-card" style={{ position: 'relative' }}>
@@ -253,15 +299,16 @@ export default function AiAgriAdvisor() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <h3 style={{ margin: 0, fontSize: '16px' }}>AI कृषी मित्र</h3>
               <span
-                title={aiServiceOnline === null ? 'तपासत आहे...' : aiServiceOnline ? 'AI सेवा चालू आहे' : 'AI सेवा बंद आहे'}
+                title={dotTitle}
                 style={{
                   display: 'inline-block',
                   width: '10px',
                   height: '10px',
                   borderRadius: '50%',
                   flexShrink: 0,
-                  background: aiServiceOnline === null ? '#fbbc04' : aiServiceOnline ? '#34a853' : '#ea4335',
-                  boxShadow: aiServiceOnline === true ? '0 0 0 2px #ceead6' : aiServiceOnline === false ? '0 0 0 2px #fcd0cf' : '0 0 0 2px #fde9a2',
+                  background: dotColor,
+                  boxShadow: dotShadow,
+                  transition: 'background 0.3s, box-shadow 0.3s'
                 }}
               />
             </div>
@@ -270,30 +317,53 @@ export default function AiAgriAdvisor() {
             </p>
           </div>
         </div>
-
       </div>
 
       {/* Messages Stream */}
       <div className="ai-messages-container" ref={messagesContainerRef}>
         {messages.map((m) => (
           <div key={m.id} className={`ai-bubble ${m.sender}`}>
-            {m.image && (
-              <img src={m.image} alt="Crop Upload" className="ai-bubble-image-preview" />
+            {/* If message has an image */}
+            {(m.attachment?.isImage || m.image) && (
+              <img
+                src={m.attachment?.dataUrl || m.image}
+                alt="Upload Preview"
+                className="ai-bubble-image-preview"
+              />
             )}
+
+            {/* If message has a document attachment (PDF, text, doc) */}
+            {m.attachment && !m.attachment.isImage && (
+              <div style={{
+                display: 'inline-flex', alignItems: 'center', gap: '8px',
+                background: 'rgba(23, 107, 58, 0.1)', border: '1px solid #cce3d4',
+                padding: '6px 12px', borderRadius: '8px', marginBottom: '8px',
+                fontSize: '12.5px', color: '#176b3a', maxWidth: '100%'
+              }}>
+                <span style={{ fontSize: '18px' }}>{m.attachment.isPdf ? '📕' : '📄'}</span>
+                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <strong>{m.attachment.name}</strong>
+                  <div style={{ fontSize: '11px', color: '#65776d' }}>
+                    {Math.round((m.attachment.size || 0) / 1024)} KB • {m.attachment.isPdf ? 'PDF दस्तऐवज' : 'दस्तऐवज'}
+                  </div>
+                </div>
+              </div>
+            )}
+
             <FormattedAiText text={m.text} />
 
-            {/* Direct WhatsApp connect with Owner Nilesh Davange */}
+            {/* Direct WhatsApp connect with Owner from properties */}
             {m.sender === 'bot' && m.id !== 1 && (
               <div className="ai-whatsapp-referral">
                 <a
-                  href={`https://wa.me/${ShopProp.whatsapp || '918459568940'}?text=${encodeURIComponent(
-                    `नमस्कार निलेश दादा, मी स्वराज कृषी सेवा केंद्र वेबसाइटवरील AI कृषी मित्राकडे खालील सल्ला विचारला होता:\n\n"${m.referralQuestion || 'शेती सल्ला'}"\n\nमला यावर अचूक मार्गदर्शन व औषधे हवी आहेत.`
+                  href={`https://wa.me/${getShopInfo().whatsapp || ShopProp.whatsapp || '918459568940'}?text=${encodeURIComponent(
+                    `नमस्कार ${getShopInfo().ownerName || 'निलेश दादा'}, मी ${getShopInfo().fullName || 'स्वराज कृषी सेवा केंद्र'} वेबसाइटवरील AI कृषी मित्राकडे खालील सल्ला विचारला होता:\n\n"${m.referralQuestion || 'शेती सल्ला'}"\n\nमला यावर अचूक मार्गदर्शन व औषधे हवी आहेत.`
                   )}`}
                   target="_blank"
                   rel="noreferrer"
                   className="btn-ai-wa-contact"
                 >
-                  💬 निलेश दवंगे यांना WhatsApp वर विचारा
+                  💬 {getShopInfo().ownerName || 'निलेश दवंगे'} यांना WhatsApp वर विचारा
                 </a>
               </div>
             )}
@@ -310,7 +380,6 @@ export default function AiAgriAdvisor() {
             </div>
           </div>
         )}
-
       </div>
 
       {/* Suggestion Chips */}
@@ -328,25 +397,48 @@ export default function AiAgriAdvisor() {
         ))}
       </div>
 
-      {/* Selected Image Preview Bar before sending */}
-      {selectedImage && (
-        <div className="ai-attached-image-bar">
-          <img src={selectedImage.dataUrl} alt="Thumbnail" className="ai-thumbnail" />
-          <span style={{ fontSize: '11.5px', color: '#176b3a', fontWeight: '600' }}>
-            पिकाचा फोटो जोडला आहे
-          </span>
+      {/* Selected Attachment Preview Bar before sending */}
+      {selectedAttachment && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '10px',
+          padding: '8px 12px', background: '#eaf5ed', borderRadius: '10px',
+          border: '1px solid #cce3d4', margin: '0 12px 8px 12px'
+        }}>
+          {selectedAttachment.isImage ? (
+            <img
+              src={selectedAttachment.dataUrl}
+              alt="Thumbnail"
+              style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '6px' }}
+            />
+          ) : (
+            <span style={{ fontSize: '24px' }}>{selectedAttachment.isPdf ? '📕' : '📄'}</span>
+          )}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{
+              fontSize: '12.5px', color: '#176b3a', fontWeight: '700',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+            }}>
+              {selectedAttachment.name}
+            </div>
+            <div style={{ fontSize: '11px', color: '#65776d' }}>
+              {Math.round((selectedAttachment.size || 0) / 1024)} KB • {selectedAttachment.isImage ? 'फोटो' : (selectedAttachment.isPdf ? 'PDF' : 'दस्तऐवज')}
+            </div>
+          </div>
           <button
             type="button"
-            className="btn-remove-attachment"
-            onClick={() => setSelectedImage(null)}
-            title="फोटो काढा"
+            onClick={() => setSelectedAttachment(null)}
+            title="काढून टाका"
+            style={{
+              background: 'transparent', border: 'none',
+              cursor: 'pointer', fontSize: '16px', color: '#c53030', padding: '4px 8px'
+            }}
           >
             ✕
           </button>
         </div>
       )}
 
-      {/* Input Bar: Audio + Image + Text */}
+      {/* Input Bar: Audio + Attachment (Document/Image) + Camera + Text */}
       <form
         className="ai-input-form"
         onSubmit={(e) => {
@@ -354,33 +446,67 @@ export default function AiAgriAdvisor() {
           handleSendMessage();
         }}
       >
+        {/* Hidden File Input for Documents & Images */}
         <input
-          ref={fileInputRef}
+          ref={docInputRef}
+          type="file"
+          accept="image/*,application/pdf,.doc,.docx,.txt,.csv,.xls,.xlsx"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) handleFileProcess(f);
+            e.target.value = '';
+          }}
+        />
+
+        {/* Hidden File Input for Camera direct capture */}
+        <input
+          ref={photoInputRef}
           type="file"
           accept="image/*"
           capture="environment"
           style={{ display: 'none' }}
-          onChange={handleImageSelect}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) handleFileProcess(f);
+            e.target.value = '';
+          }}
         />
 
+        {/* Document / Any File Attachment Button */}
         <button
           type="button"
           className="btn-ai-icon"
-          onClick={() => fileInputRef.current?.click()}
-          title="पिकाचा फोटो पाठवा"
+          onClick={() => docInputRef.current?.click()}
+          title="दस्तऐवज किंवा फोटो जोडा (PDF, Word, Text, Image)"
+          disabled={isThinking}
+        >
+          📎
+        </button>
+
+        {/* Camera / Photo Button */}
+        <button
+          type="button"
+          className="btn-ai-icon"
+          onClick={() => photoInputRef.current?.click()}
+          title="पिकाचा फोटो काढा किंवा अपलोड करा"
+          disabled={isThinking}
         >
           📷
         </button>
 
+        {/* Voice Input Button */}
         <button
           type="button"
           className={`btn-ai-icon ${isRecording ? 'recording' : ''}`}
           onClick={handleToggleVoice}
           title={isRecording ? 'रेकॉर्डिंग थांबवा' : 'बोलून प्रश्न विचारा (मराठी/हिंदी)'}
+          disabled={isThinking}
         >
           {isRecording ? '🛑' : '🎙️'}
         </button>
 
+        {/* Text Input */}
         <input
           type="text"
           className="ai-input-text"
@@ -390,10 +516,11 @@ export default function AiAgriAdvisor() {
           disabled={isThinking}
         />
 
+        {/* Submit Send Button */}
         <button
           type="submit"
           className="btn-ai-send"
-          disabled={isThinking || (!inputText.trim() && !selectedImage)}
+          disabled={isThinking || (!inputText.trim() && !selectedAttachment)}
           title="पाठवा"
         >
           ➤

@@ -83,7 +83,7 @@ export default function Layout({ children }) {
         gap: '8px'
       }}>
         <span>
-          🌱 शेतकरी हित प्रथम • अस्सल खते व औषधे
+          🌱 शेतकरी हित प्रथम • अस्सल खते व औषधे{shop?.showHomeDelivery ? ' • घरपोच डिलिव्हरी' : ''}
         </span>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -362,9 +362,11 @@ export default function Layout({ children }) {
       <footer className="footer" style={{ marginTop: '40px', background: '#0e3a1f', color: '#ffffff', padding: '36px 20px 70px' }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '24px' }}>
           <div>
-            <h3 style={{ margin: '0 0 10px', fontSize: '18px', color: '#b9dc68' }}>स्वराज कृषी सेवा केंद्र</h3>
+            <h3 style={{ margin: '0 0 10px', fontSize: '18px', color: '#b9dc68' }}>
+              {shop?.fullName || 'स्वराज कृषी सेवा केंद्र'}
+            </h3>
             <p style={{ margin: 0, fontSize: '13px', lineHeight: '1.6', color: '#d0dfd4' }}>
-              शेतकरी बांधवांसाठी अस्सल कंपनीची खते, कीटकनाशके, बुरशीनाशके, विद्राव्य खते व आधुनिक कृषी सल्ला.
+              शेतकरी बांधवांसाठी अस्सल कंपनीची खते, कीटकनाशके, बुरशीनाशके, विद्राव्य खते व आधुनिक कृषी सल्ला.{shop?.showHomeDelivery ? ' घरपोच डिलिव्हरी उपलब्ध!' : ''}
             </p>
           </div>
 
@@ -374,7 +376,7 @@ export default function Layout({ children }) {
               <Link to="/products" style={{ color: '#ffffff', textDecoration: 'none' }}>• उत्पादने यादी</Link>
               <Link to="/customer/portal" style={{ color: '#ffffff', textDecoration: 'none' }}>• शेतकरी ग्राहक पोर्टल</Link>
               <Link to="/admin/login" style={{ color: '#ffffff', textDecoration: 'none' }}>• व्यवस्थापक / कर्मचारी लॉगिन</Link>
-              <Link to="/services" style={{ color: '#ffffff', textDecoration: 'none' }}>• सेवा व माहिती</Link>
+              <Link to="/services" style={{ color: '#ffffff', textDecoration: 'none' }}>• {shop?.showHomeDelivery ? 'घरपोच डिलिव्हरी व सेवा' : 'सेवा व माहिती'}</Link>
             </div>
           </div>
 
@@ -383,7 +385,12 @@ export default function Layout({ children }) {
             <div style={{ fontSize: '13px', lineHeight: '1.6', color: '#d0dfd4' }}>
               <div><strong>प्रोप्रायटर:</strong> {shop?.ownerName || ShopProp.ownerName || 'निलेश त्र्यंबक दवंगे'}</div>
               <div><strong>मोबाईल:</strong> {shop?.phone || ShopProp.phone || '+91 8459568940'}</div>
-              <div><strong>पत्ता:</strong> {shop?.address || ShopProp.address || 'मु. पो. कानमंडाळे, ता. चांदवड, जि. नाशिक'}</div>
+              <div><strong>पत्ता:</strong> {shop?.address || ShopProp.address || 'मु. पो. कानमंडाळे, ता. चांदवड, जि. नाशिक'} {shop?.pincode ? `(${shop.pincode})` : ''}</div>
+              {shop?.gstNumber && (
+                <div style={{ marginTop: '4px', color: '#b9dc68', fontWeight: '700' }}>
+                  <strong>GSTIN:</strong> {shop.gstNumber}
+                </div>
+              )}
             </div>
           </div>
         </div>

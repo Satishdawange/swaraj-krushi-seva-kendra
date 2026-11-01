@@ -19,12 +19,14 @@ import { getProducts } from '../service/productService';
 import ProductCard from '../components/ProductCard';
 
 import ShopProp from '../config/shopProps';
+import { getShopInfo } from '../service/shopService';
 
 import AiAgriAdvisor from '../components/AiAgriAdvisor';
 
 
 export default function Home() {
   const [products, setProducts] = useState([]);
+  const shop = getShopInfo();
 
   useEffect(() => {
     let active = true;
@@ -50,7 +52,7 @@ export default function Home() {
         <div className="hero-content">
 
           <span className="pill">
-            🌾 AI कृषी मित्र • थेट मोफत शेती सल्लागार
+            {shop.showAiAdvisor ? '🌾 AI कृषी मित्र • थेट मोफत शेती सल्लागार' : `🌾 ${shop.fullName || 'स्वराज कृषी सेवा केंद्र'}`}
           </span>
 
 
@@ -64,7 +66,9 @@ export default function Home() {
 
 
           <p>
-            पिकांवरील रोग, किडीचा प्रादुर्भाव किंवा खतांबद्दल थेट प्रश्न विचारा — आमचा AI कृषी मित्र तुम्हाला पिकांचे नाव, डोस व स्वराज कृषी सेवा केंद्रातील योग्य औषधांची माहिती देईल.
+            {shop.showAiAdvisor
+              ? 'पिकांवरील रोग, किडीचा प्रादुर्भाव किंवा खतांबद्दल थेट प्रश्न विचारा — आमचा AI कृषी मित्र तुम्हाला पिकांचे नाव, डोस व स्वराज कृषी सेवा केंद्रातील योग्य औषधांची माहिती देईल.'
+              : 'शेतकरी बांधवांसाठी अस्सल कंपनीची खते, कीटकनाशके, बुरशीनाशके, विद्राव्य खते व आधुनिक कृषी मार्गदर्शन. आपल्या सर्व शेतीविषयक गरजांसाठी एकच विश्वासू केंद्र.'}
           </p>
 
 
@@ -112,10 +116,45 @@ export default function Home() {
         </div>
 
 
-        {/* Interactive AI Krushi Mitra Window */}
+        {/* Interactive AI Krushi Mitra Window or Shop Highlights */}
         <div className="hero-visual" style={{ minHeight: 'auto' }}>
 
-          <AiAgriAdvisor />
+          {shop.showAiAdvisor ? (
+            <AiAgriAdvisor />
+          ) : (
+            <div style={{
+              background: '#ffffff',
+              borderRadius: '20px',
+              padding: '30px',
+              border: '1.5px solid #c2dec7',
+              boxShadow: '0 8px 30px rgba(23,107,58,0.08)',
+              textAlign: 'center'
+            }}>
+              <div style={{ fontSize: '48px', marginBottom: '12px' }}>🌱</div>
+              <h3 style={{ margin: '0 0 10px', color: '#176b3a', fontSize: '20px' }}>
+                {shop.fullName || 'स्वराज कृषी सेवा केंद्र'}
+              </h3>
+              <p style={{ margin: '0 0 16px', color: '#556b5a', fontSize: '14px', lineHeight: '1.6' }}>
+                {shop.address || 'मु. पो. कानमंडाळे, ता. चांदवड, जि. नाशिक'}
+              </p>
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                <a
+                  href={`tel:${shop.phone || ShopProp.phone}`}
+                  className="primary-btn"
+                  style={{ padding: '10px 18px', fontSize: '13px' }}
+                >
+                  📞 थेट कॉल करा
+                </a>
+                <a
+                  href={`https://wa.me/${shop.whatsapp || ShopProp.whatsapp}`}
+                  className="secondary-btn"
+                  style={{ padding: '10px 18px', fontSize: '13px', background: '#eaf5eb', color: '#176b3a' }}
+                >
+                  💬 WhatsApp
+                </a>
+              </div>
+            </div>
+          )}
 
         </div>
 

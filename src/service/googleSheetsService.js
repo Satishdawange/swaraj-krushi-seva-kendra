@@ -259,14 +259,93 @@ export async function changeGoogleSheetsPassword(
   return result;
 }
 
-export async function fetchMyCustomerBills() {
+export async function fetchMyCustomerBills(explicitMobile = '') {
+  let bills = [];
   const token = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
-  if (!token) throw new Error("ग्राहक सत्र पुन्हा सुरू करण्यासाठी लॉग इन करा.");
-  await requireGoogleSheetsApiVersion();
-  const result = await sendGoogleSheetsAuthAction("getMyBills", { token });
-  if (!result.success)
-    throw new Error(result.error || "तुमची बिले लोड करता आली नाहीत.");
-  return Array.isArray(result.data) ? result.data : [];
+
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem('sksk_auth_user') || '{}');
+  } catch {}
+
+  const targetMobile = String(
+    explicitMobile ||
+    user?.mobile ||
+    user?.username ||
+    String(user?.id || '').replace(/^CUST-/i, '')
+  ).replace(/\D/g, '').slice(-10);
+
+  // 1. If session token is present, try Google Sheets Auth Action
+  if (token) {
+    try {
+      const result = await sendGoogleSheetsAuthAction("getMyBills", { token });
+      if (result && result.success && Array.isArray(result.data) && result.data.length > 0) {
+        bills = result.data.map(b => ({
+          ...b,
+          Customer_Mobile: b.Customer_Mobile || b.Mobile || targetMobile,
+          customerMobile: b.customerMobile || targetMobile
+        }));
+      }
+    } catch (err) {
+      console.warn("sendGoogleSheetsAuthAction getMyBills failed, trying fallbacks:", err.message);
+    }
+  }
+
+  // 2. Fallbacks if bills is empty and targetMobile is known
+  if (bills.length === 0 && targetMobile) {
+    // 2a. Check sksk_bills_db in localStorage
+    try {
+      const localBills = readStorage(STORAGE_KEYS.BILLS, []);
+      if (Array.isArray(localBills) && localBills.length > 0) {
+        const matched = localBills.filter((b) => {
+          const m = String(b.customerMobile || b.Customer_Mobile || b.Mobile || b.mobile || '')
+            .replace(/\D/g, '').slice(-10);
+          return m === targetMobile;
+        });
+        if (matched.length > 0) {
+          bills = matched;
+        }
+      }
+    } catch (err) {
+      console.warn("Local sksk_bills_db fallback error:", err.message);
+    }
+
+    // 2b. Check if we can fetch Google Sheets 'Bills' tab directly
+    if (bills.length === 0) {
+      try {
+        const sheetBills = await fetchGoogleSheetRecords("Bills");
+        if (Array.isArray(sheetBills) && sheetBills.length > 0) {
+          const matched = sheetBills.filter((row) => {
+            const m = String(row.Customer_Mobile || row.Mobile || row.customerMobile || row.mobile || '')
+              .replace(/\D/g, '').slice(-10);
+            return m === targetMobile;
+          });
+          if (matched.length > 0) {
+            bills = matched;
+          }
+        }
+      } catch (err) {
+        console.warn("fetchGoogleSheetRecords Bills fallback error:", err.message);
+      }
+    }
+
+    // 2c. Check sksk_bills_backup in localStorage
+    if (bills.length === 0) {
+      try {
+        const rawBackup = localStorage.getItem("sksk_bills_backup");
+        if (rawBackup) {
+          const backupObj = JSON.parse(rawBackup);
+          if (backupObj[targetMobile] && Array.isArray(backupObj[targetMobile].bills)) {
+            bills = backupObj[targetMobile].bills;
+          }
+        }
+      } catch (err) {
+        console.warn("sksk_bills_backup fallback error:", err.message);
+      }
+    }
+  }
+
+  return Array.isArray(bills) ? bills : [];
 }
 
 export async function sendGoogleSheetsAction(action, data) {
@@ -1376,6 +1455,56 @@ export async function saveSheetSetting(key, value) {
       data: { key, value }
     })
   });
+  return { success: true };
+}
+
+// ─── Fetch Categories from Google Sheets Categories tab ───────────────────────
+export async function fetchAllSheetCategories() {
+  try {
+    const rows = await fetchGoogleSheetRecords('Categories');
+    if (!rows || rows.length === 0) {
+      return googleSheetsCategorySeed;
+    }
+    return rows.map((row, idx) => ({
+      id: String(row.Category_ID || row.id || row.ID || ('cat_' + (idx + 1))).trim(),
+      name: String(row.Name_MR || row.name || row.Name || '').trim(),
+      nameEn: String(row.Name_EN || row.nameEn || row.name_en || '').trim(),
+      isActive: row.Is_Active !== undefined
+        ? (String(row.Is_Active).toLowerCase() === 'true' || row.Is_Active === true)
+        : true,
+      sortOrder: Number(row.Sort_Order ?? row.sortOrder ?? idx + 1),
+      createdAt: row.Created_At || row.createdAt || '',
+      updatedAt: row.Updated_At || row.updatedAt || '',
+    })).filter(c => c.name || c.id);
+  } catch (err) {
+    console.warn('fetchAllSheetCategories fallback to seed:', err);
+    return googleSheetsCategorySeed;
+  }
+}
+
+// ─── Save / Update a Category in Google Sheet ────────────────────────────────
+export async function saveSheetCategory(categoryData) {
+  const config = getGoogleSheetsConfig();
+  if (!config.webAppUrl) throw new Error('Google Sheets not connected.');
+
+  const payload = {
+    action: 'saveCategory',
+    data: {
+      Category_ID: categoryData.id || ('cat_' + Date.now()),
+      Name_MR: categoryData.name || '',
+      Name_EN: categoryData.nameEn || '',
+      Is_Active: categoryData.isActive !== false,
+      Sort_Order: Number(categoryData.sortOrder || 0),
+    }
+  };
+
+  await fetch(config.webAppUrl, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload)
+  });
+
   return { success: true };
 }
 

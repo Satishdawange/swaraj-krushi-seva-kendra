@@ -8,19 +8,22 @@ import {
   Clock,
   MessageCircle,
   Navigation,
-  User
+  User,
+  ShieldCheck
 } from '../components/Icons';
 
 import ShopProp from '../config/shopProps';
+import { getShopInfo } from '../service/shopService';
 
 
 export default function Contact() {
+  const shop = getShopInfo();
 
   const whatsappMessage =
     'नमस्कार, मला उत्पादनाबद्दल चौकशी करायची आहे.';
 
   const whatsappLink =
-    `https://wa.me/${ShopProp.whatsapp}?text=${encodeURIComponent(
+    `https://wa.me/${shop.whatsapp || ShopProp.whatsapp}?text=${encodeURIComponent(
       whatsappMessage
     )}`;
 
@@ -71,13 +74,13 @@ export default function Contact() {
               </b>
 
               <span>
-                {ShopProp.fullName}
+                {shop.fullName || ShopProp.fullName}
                 <br />
 
-                {ShopProp.address}
+                {shop.address || ShopProp.address}
                 <br />
 
-                {ShopProp.pincode}
+                {shop.pincode || ShopProp.pincode}
               </span>
 
             </div>
@@ -87,10 +90,10 @@ export default function Contact() {
        <User />
 
         <div>
-         <b>संपर्क व्यक्ती</b>
+         <b>संपर्क व्यक्ती (प्रोप्रायटर)</b>
 
          <span>
-          {ShopProp.ownerName}
+          {shop.ownerName || ShopProp.ownerName}
          </span>
        </div>
        </div>
@@ -107,13 +110,26 @@ export default function Contact() {
                 फोन
               </b>
 
-              <a href={`tel:${ShopProp.phone}`}>
-                {ShopProp.phone}
+              <a href={`tel:${shop.phone || ShopProp.phone}`}>
+                {shop.phone || ShopProp.phone}
               </a>
 
             </div>
 
           </div>
+
+          {/* GSTIN (if configured in properties) */}
+          {shop.gstNumber && (
+            <div className="contact-item">
+              <ShieldCheck />
+              <div>
+                <b>GSTIN नोंदणी क्रमांक</b>
+                <span style={{ fontWeight: '700', color: '#176b3a' }}>
+                  {shop.gstNumber}
+                </span>
+              </div>
+            </div>
+          )}
 
 
           {/* Opening Hours */}
@@ -182,15 +198,15 @@ export default function Contact() {
             </div>
 
             <span>
-              {ShopProp.fullName}
+              {shop.fullName || ShopProp.fullName}
             </span>
 
             <small>
-              {ShopProp.address}
+              {shop.address || ShopProp.address}
             </small>
 
             <small>
-              {ShopProp.pincode}
+              {shop.pincode || ShopProp.pincode}
             </small>
 
           </div>
