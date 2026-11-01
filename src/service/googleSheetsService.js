@@ -7,9 +7,17 @@ import { GOOGLE_APPS_SCRIPT_CODE } from "../utils/googleAppsScriptTemplate";
 import ShopProp from "../config/shopProps";
 import { filterSheetRows, normalizeInventoryRow } from "../utils/sheetData";
 import { buildDashboardAnalytics } from "../utils/dashboardAnalytics";
-import { clearDashboardMetricsCache, getDashboardMetricsCache, setDashboardMetricsCache } from "../utils/dashboardCache";
+import {
+  clearDashboardMetricsCache,
+  getDashboardMetricsCache,
+  setDashboardMetricsCache,
+} from "../utils/dashboardCache";
 
-export { clearDashboardMetricsCache, getDashboardMetricsCache, setDashboardMetricsCache };
+export {
+  clearDashboardMetricsCache,
+  getDashboardMetricsCache,
+  setDashboardMetricsCache,
+};
 
 const STORAGE_KEYS = {
   SHEETS_CONFIG: "sksk_sheets_config",
@@ -122,34 +130,48 @@ export function saveGoogleSheetsConfig(config) {
       : {}),
   };
   writeStorage(STORAGE_KEYS.SHEETS_CONFIG, updated);
-  window.dispatchEvent(new CustomEvent("sksk-sheets-config-change", { detail: updated }));
+  window.dispatchEvent(
+    new CustomEvent("sksk-sheets-config-change", { detail: updated }),
+  );
   return updated;
 }
 
 export async function fetchGoogleSheetRecords(sheetName) {
   const url = getGoogleSheetsConfig().webAppUrl.trim();
-  if (!url) throw new Error("Google Apps Script Web App URL is not configured.");
+  if (!url)
+    throw new Error("Google Apps Script Web App URL is not configured.");
 
   const query = new URLSearchParams({ action: "getAll", sheetName });
-  if (sheetName === "Bills" || sheetName === "Customers" || sheetName === "Inventory" || sheetName === "Products") {
+  if (
+    sheetName === "Bills" ||
+    sheetName === "Customers" ||
+    sheetName === "Inventory" ||
+    sheetName === "Products"
+  ) {
     const token = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
     if (token) query.set("token", token);
   }
-  const response = await fetch(`${url}${url.includes("?") ? "&" : "?"}${query}`, {
-    method: "GET",
-    mode: "cors",
-    cache: "no-store",
-  });
-  if (!response.ok) throw new Error(`Google Sheets request failed (${response.status}).`);
+  const response = await fetch(
+    `${url}${url.includes("?") ? "&" : "?"}${query}`,
+    {
+      method: "GET",
+      mode: "cors",
+      cache: "no-store",
+    },
+  );
+  if (!response.ok)
+    throw new Error(`Google Sheets request failed (${response.status}).`);
 
   const result = await response.json();
-  if (!result.success) throw new Error(result.error || `Could not read ${sheetName}.`);
+  if (!result.success)
+    throw new Error(result.error || `Could not read ${sheetName}.`);
   return Array.isArray(result.data) ? result.data : [];
 }
 
 async function sendGoogleSheetsAuthAction(action, data) {
   const url = getGoogleSheetsConfig().webAppUrl.trim();
-  if (!url) throw new Error("Google Apps Script Web App URL is not configured.");
+  if (!url)
+    throw new Error("Google Apps Script Web App URL is not configured.");
 
   const response = await fetch(url, {
     method: "POST",
@@ -159,18 +181,27 @@ async function sendGoogleSheetsAuthAction(action, data) {
     cache: "no-store",
   });
   if (!response.ok) {
-    throw new Error(`Google Sheets authentication failed (${response.status}).`);
+    throw new Error(
+      `Google Sheets authentication failed (${response.status}).`,
+    );
   }
   return response.json();
 }
 
 export async function loginWithGoogleSheets(username, password) {
-  const result = await sendGoogleSheetsAuthAction("login", { username, password });
+  const result = await sendGoogleSheetsAuthAction("login", {
+    username,
+    password,
+  });
   if (result.success && result.user && !result.token) {
-    throw new Error("Google Apps Script जुनी आवृत्ती आहे. Admin/Staff login सुरू करण्यासाठी नवीन session-enabled script deploy करा.");
+    throw new Error(
+      "Google Apps Script जुनी आवृत्ती आहे. Admin/Staff login सुरू करण्यासाठी नवीन session-enabled script deploy करा.",
+    );
   }
   if (!result.success || !result.user || !result.token) {
-    throw new Error(result.error || "चुकीचा आयडी किंवा पासवर्ड! कृपया पुन्हा तपासा.");
+    throw new Error(
+      result.error || "चुकीचा आयडी किंवा पासवर्ड! कृपया पुन्हा तपासा.",
+    );
   }
   return { user: result.user, token: result.token };
 }
@@ -180,11 +211,17 @@ export async function validateGoogleSheetsSession(token) {
   const result = await sendGoogleSheetsAuthAction("validateSession", { token });
   if (!result.success) {
     if (/invalid action/i.test(result.error || "")) {
-      throw new Error("Google Apps Script जुनी आवृत्ती आहे. नवीन session-enabled script deploy करा.");
+      throw new Error(
+        "Google Apps Script जुनी आवृत्ती आहे. नवीन session-enabled script deploy करा.",
+      );
     }
     throw new Error(result.error || "सत्राची पडताळणी करता आली नाही.");
   }
-  return { valid: Boolean(result.valid), user: result.user, reason: result.reason };
+  return {
+    valid: Boolean(result.valid),
+    user: result.user,
+    reason: result.reason,
+  };
 }
 
 export async function logoutGoogleSheetsSession(token) {
@@ -195,7 +232,11 @@ export async function logoutGoogleSheetsSession(token) {
   }
 }
 
-export async function changeGoogleSheetsPassword(token, currentPassword, newPassword) {
+export async function changeGoogleSheetsPassword(
+  token,
+  currentPassword,
+  newPassword,
+) {
   await requireGoogleSheetsApiVersion();
   const result = await sendGoogleSheetsAuthAction("changePassword", {
     token,
@@ -204,7 +245,9 @@ export async function changeGoogleSheetsPassword(token, currentPassword, newPass
   });
   if (!result.success) {
     if (/invalid action/i.test(result.error || "")) {
-      throw new Error("Google Apps Script जुनी आवृत्ती आहे. Password change साठी updated script deploy करा.");
+      throw new Error(
+        "Google Apps Script जुनी आवृत्ती आहे. Password change साठी updated script deploy करा.",
+      );
     }
     throw new Error(result.error || "पासवर्ड बदलता आला नाही.");
   }
@@ -216,13 +259,15 @@ export async function fetchMyCustomerBills() {
   if (!token) throw new Error("ग्राहक सत्र पुन्हा सुरू करण्यासाठी लॉग इन करा.");
   await requireGoogleSheetsApiVersion();
   const result = await sendGoogleSheetsAuthAction("getMyBills", { token });
-  if (!result.success) throw new Error(result.error || "तुमची बिले लोड करता आली नाहीत.");
+  if (!result.success)
+    throw new Error(result.error || "तुमची बिले लोड करता आली नाहीत.");
   return Array.isArray(result.data) ? result.data : [];
 }
 
 export async function sendGoogleSheetsAction(action, data) {
   const url = getGoogleSheetsConfig().webAppUrl.trim();
-  if (!url) throw new Error("Google Apps Script Web App URL is not configured.");
+  if (!url)
+    throw new Error("Google Apps Script Web App URL is not configured.");
 
   await fetch(url, {
     method: "POST",
@@ -235,19 +280,28 @@ export async function sendGoogleSheetsAction(action, data) {
 
 async function requireGoogleSheetsApiVersion() {
   const url = getGoogleSheetsConfig().webAppUrl.trim();
-  if (!url) throw new Error("Google Apps Script Web App URL is not configured.");
+  if (!url)
+    throw new Error("Google Apps Script Web App URL is not configured.");
   const pingUrl = `${url}${url.includes("?") ? "&" : "?"}action=ping`;
-  const response = await fetch(pingUrl, { method: "GET", mode: "cors", cache: "no-store" });
-  if (!response.ok) throw new Error(`Google Sheets version check failed (${response.status}).`);
+  const response = await fetch(pingUrl, {
+    method: "GET",
+    mode: "cors",
+    cache: "no-store",
+  });
+  if (!response.ok)
+    throw new Error(`Google Sheets version check failed (${response.status}).`);
   const result = await response.json();
   if (result.apiVersion !== REQUIRED_GOOGLE_SHEETS_API_VERSION) {
-    throw new Error("Google Apps Script जुनी आवृत्ती आहे. नवीन v10 script पुन्हा deploy करा.");
+    throw new Error(
+      "Google Apps Script जुनी आवृत्ती आहे. नवीन v10 script पुन्हा deploy करा.",
+    );
   }
 }
 
 async function sendGoogleSheetsActionForResult(action, data) {
   const url = getGoogleSheetsConfig().webAppUrl.trim();
-  if (!url) throw new Error("Google Apps Script Web App URL is not configured.");
+  if (!url)
+    throw new Error("Google Apps Script Web App URL is not configured.");
   await requireGoogleSheetsApiVersion();
 
   const response = await fetch(url, {
@@ -257,9 +311,13 @@ async function sendGoogleSheetsActionForResult(action, data) {
     body: JSON.stringify({ action, data }),
     cache: "no-store",
   });
-  if (!response.ok) throw new Error(`Google Sheets request failed (${response.status}).`);
+  if (!response.ok)
+    throw new Error(`Google Sheets request failed (${response.status}).`);
   const result = await response.json();
-  if (!result.success) throw new Error(result.error || `Google Sheets could not complete ${action}.`);
+  if (!result.success)
+    throw new Error(
+      result.error || `Google Sheets could not complete ${action}.`,
+    );
   return result;
 }
 
@@ -368,7 +426,10 @@ export async function fetchRecentRecords(
       // Category filters must run before pagination. Fetch the full inventory so
       // older deployed Apps Script versions (without a category parameter) work too.
       if (category || filter) {
-        let allItems = filterSheetRows(await fetchGoogleSheetRecords(sheetName), { search, category });
+        let allItems = filterSheetRows(
+          await fetchGoogleSheetRecords(sheetName),
+          { search, category },
+        );
         if (typeof filter === "function") allItems = allItems.filter(filter);
         const total = allItems.length;
         const totalPages = Math.max(1, Math.ceil(total / limit));
@@ -390,7 +451,12 @@ export async function fetchRecentRecords(
         search: search || "",
         category: category || "",
       });
-      if (sheetName === "Bills" || sheetName === "Customers" || sheetName === "Inventory" || sheetName === "Products") {
+      if (
+        sheetName === "Bills" ||
+        sheetName === "Customers" ||
+        sheetName === "Inventory" ||
+        sheetName === "Products"
+      ) {
         const token = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
         if (token) qParams.set("token", token);
       }
@@ -486,7 +552,10 @@ export async function getLiveInventoryItems({ strict = false } = {}) {
     return items;
   } catch (error) {
     if (strict) throw error;
-    console.warn("Could not load live inventory; using cached inventory.", error);
+    console.warn(
+      "Could not load live inventory; using cached inventory.",
+      error,
+    );
     return getAllInventoryItems().map(normalizeInventoryRow);
   }
 }
@@ -495,10 +564,14 @@ export function saveInventoryItemLocal(item) {
   const list = getAllInventoryItems();
   const id = item.id || item.ID || item.Product_ID || `inv-${Date.now()}`;
   const index = list.findIndex(
-    (i) => i.id === id || i.ID === id || (
-      i.name?.trim().toLowerCase() === String(item.name || "").trim().toLowerCase() &&
-      String(item.name || "").trim()
-    ),
+    (i) =>
+      i.id === id ||
+      i.ID === id ||
+      (i.name?.trim().toLowerCase() ===
+        String(item.name || "")
+          .trim()
+          .toLowerCase() &&
+        String(item.name || "").trim()),
   );
 
   const fullItem = {
@@ -556,6 +629,35 @@ export function adjustInventoryStock(
   return item;
 }
 
+//read geminiAPI key
+export async function getGeminiApiKey() {
+  try {
+    const settings = await fetchGoogleSheetRecords("Settings");
+
+    const setting = settings.find(
+      (row) =>
+        String(row.name || row.Name || row.key || row.Key || "")
+          .trim()
+          .toLowerCase() === "gemini_api_key",
+    );
+
+    if (!setting) {
+      throw new Error("gemini_api_key not found in Settings sheet.");
+    }
+
+    const apiKey = String(setting.value || setting.Value || "").trim();
+
+    if (!apiKey) {
+      throw new Error("Gemini API key value is empty.");
+    }
+
+    return apiKey;
+  } catch (error) {
+    console.error("Error fetching Gemini API key:", error);
+    throw error;
+  }
+}
+
 // Record Bulk Purchase Lot & Update Stock
 export async function recordBulkPurchaseLot(lotData) {
   const lots = readStorage(STORAGE_KEYS.PURCHASES, []);
@@ -584,18 +686,35 @@ export async function recordBulkPurchaseLot(lotData) {
 
   const inventory = getAllInventoryItems();
   const requestedItem = lotData.inventoryItem || {};
-  const selectedId = String(lotData.inventoryId || requestedItem.id || requestedItem.ID || '');
+  const selectedId = String(
+    lotData.inventoryId || requestedItem.id || requestedItem.ID || "",
+  );
   const productName = lotRecord.productName.trim().toLowerCase();
   const productNameEn = lotRecord.productNameEn.trim().toLowerCase();
-  const existing = inventory.find((item) =>
-    (selectedId && String(item.id || item.ID) === selectedId) ||
-    [item.name, item.nameEn].some((name) => {
-      const candidate = String(name || '').trim().toLowerCase();
-      return candidate && (candidate === productName || (productNameEn && candidate === productNameEn));
-    })
+  const existing = inventory.find(
+    (item) =>
+      (selectedId && String(item.id || item.ID) === selectedId) ||
+      [item.name, item.nameEn].some((name) => {
+        const candidate = String(name || "")
+          .trim()
+          .toLowerCase();
+        return (
+          candidate &&
+          (candidate === productName ||
+            (productNameEn && candidate === productNameEn))
+        );
+      }),
   );
-  const itemId = selectedId || existing?.id || existing?.ID || `INV-${Date.now()}`;
-  const nextStock = Number(existing?.availableStock ?? existing?.Available_Stock ?? requestedItem.availableStock ?? requestedItem.Available_Stock ?? 0) + qty;
+  const itemId =
+    selectedId || existing?.id || existing?.ID || `INV-${Date.now()}`;
+  const nextStock =
+    Number(
+      existing?.availableStock ??
+        existing?.Available_Stock ??
+        requestedItem.availableStock ??
+        requestedItem.Available_Stock ??
+        0,
+    ) + qty;
   const inventoryItem = {
     ...existing,
     ...requestedItem,
@@ -607,8 +726,16 @@ export async function recordBulkPurchaseLot(lotData) {
     Name_EN: lotRecord.productNameEn,
     category: lotRecord.category,
     Category: lotRecord.category,
-    categoryEn: lotData.categoryEn || requestedItem.categoryEn || requestedItem.Category_EN || '',
-    Category_EN: lotData.categoryEn || requestedItem.categoryEn || requestedItem.Category_EN || '',
+    categoryEn:
+      lotData.categoryEn ||
+      requestedItem.categoryEn ||
+      requestedItem.Category_EN ||
+      "",
+    Category_EN:
+      lotData.categoryEn ||
+      requestedItem.categoryEn ||
+      requestedItem.Category_EN ||
+      "",
     subcategory: lotRecord.subcategory,
     Subcategory: lotRecord.subcategory,
     unit: lotRecord.unit,
@@ -619,8 +746,18 @@ export async function recordBulkPurchaseLot(lotData) {
     Selling_Price: lotRecord.sellingPrice,
     availableStock: nextStock,
     Available_Stock: nextStock,
-    minAlertQty: Number(lotData.minAlertQty ?? requestedItem.minAlertQty ?? requestedItem.Min_Alert_Qty ?? 10),
-    Min_Alert_Qty: Number(lotData.minAlertQty ?? requestedItem.minAlertQty ?? requestedItem.Min_Alert_Qty ?? 10),
+    minAlertQty: Number(
+      lotData.minAlertQty ??
+        requestedItem.minAlertQty ??
+        requestedItem.Min_Alert_Qty ??
+        10,
+    ),
+    Min_Alert_Qty: Number(
+      lotData.minAlertQty ??
+        requestedItem.minAlertQty ??
+        requestedItem.Min_Alert_Qty ??
+        10,
+    ),
     updatedAt: new Date().toISOString(),
     Updated_At: new Date().toISOString(),
   };
@@ -628,13 +765,19 @@ export async function recordBulkPurchaseLot(lotData) {
   const config = getGoogleSheetsConfig();
   let isLive = false;
   if (config.webAppUrl.trim()) {
-    await sendGoogleSheetsActionForResult("savePurchaseLot", { ...lotRecord, inventoryId: itemId, inventoryItem });
+    await sendGoogleSheetsActionForResult("savePurchaseLot", {
+      ...lotRecord,
+      inventoryId: itemId,
+      inventoryItem,
+    });
     isLive = true;
   }
 
   lots.unshift(lotRecord);
   writeStorage(STORAGE_KEYS.PURCHASES, lots);
-  const index = inventory.findIndex((item) => String(item.id || item.ID) === itemId);
+  const index = inventory.findIndex(
+    (item) => String(item.id || item.ID) === itemId,
+  );
   if (index >= 0) inventory[index] = { ...inventory[index], ...inventoryItem };
   else inventory.unshift(inventoryItem);
   writeStorage(STORAGE_KEYS.INVENTORY, inventory);
@@ -800,16 +943,24 @@ export async function getDashboardMetrics(filters = {}) {
       limit: String(filters.limit || 5),
       token: localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || "",
     });
-    const response = await fetch(`${config.webAppUrl}${config.webAppUrl.includes("?") ? "&" : "?"}${query}`, {
-      method: "GET",
-      mode: "cors",
-      cache: "no-store",
-    });
-    if (!response.ok) throw new Error(`Google Sheets dashboard request failed (${response.status}).`);
+    const response = await fetch(
+      `${config.webAppUrl}${config.webAppUrl.includes("?") ? "&" : "?"}${query}`,
+      {
+        method: "GET",
+        mode: "cors",
+        cache: "no-store",
+      },
+    );
+    if (!response.ok)
+      throw new Error(
+        `Google Sheets dashboard request failed (${response.status}).`,
+      );
     const result = await response.json();
     if (!result.success) {
       if (/Invalid action: getDashboardMetrics/i.test(result.error || "")) {
-        throw new Error("Dashboard साठी नवीन Google Apps Script (v10) deploy करा.");
+        throw new Error(
+          "Dashboard साठी नवीन Google Apps Script (v10) deploy करा.",
+        );
       }
       throw new Error(result.error || "Could not load dashboard metrics.");
     }
@@ -820,56 +971,130 @@ export async function getDashboardMetrics(filters = {}) {
 
 async function getLocalDashboardMetrics(filters) {
   const readNumber = (row, ...keys) => {
-    for (const key of keys) if (row?.[key] !== undefined && row[key] !== "") return Number(row[key]) || 0;
+    for (const key of keys)
+      if (row?.[key] !== undefined && row[key] !== "")
+        return Number(row[key]) || 0;
     return 0;
   };
   const readValue = (row, ...keys) => {
-    for (const key of keys) if (row?.[key] !== undefined && row[key] !== "") return row[key];
+    for (const key of keys)
+      if (row?.[key] !== undefined && row[key] !== "") return row[key];
     return "";
   };
   const useGoogleSheets = Boolean(getGoogleSheetsConfig().webAppUrl.trim());
-  const [sheetBills, sheetInventory, sheetChallans, sheetCustomers] = useGoogleSheets
-    ? await Promise.all([
-        fetchGoogleSheetRecords("Bills"),
-        fetchGoogleSheetRecords("Inventory"),
-        fetchGoogleSheetRecords("Challans"),
-        fetchGoogleSheetRecords("Customers"),
-      ])
-    : [[], [], [], []];
-  const billsSource = useGoogleSheets ? sheetBills : readStorage(STORAGE_KEYS.BILLS, []);
-  const inventorySource = useGoogleSheets ? sheetInventory : getAllInventoryItems();
-  const challansSource = useGoogleSheets ? sheetChallans : readStorage(STORAGE_KEYS.CHALLANS, []);
-  const customerSource = useGoogleSheets ? sheetCustomers : Object.values(readStorage(STORAGE_KEYS.CUSTOMERS, {}));
+  const [sheetBills, sheetInventory, sheetChallans, sheetCustomers] =
+    useGoogleSheets
+      ? await Promise.all([
+          fetchGoogleSheetRecords("Bills"),
+          fetchGoogleSheetRecords("Inventory"),
+          fetchGoogleSheetRecords("Challans"),
+          fetchGoogleSheetRecords("Customers"),
+        ])
+      : [[], [], [], []];
+  const billsSource = useGoogleSheets
+    ? sheetBills
+    : readStorage(STORAGE_KEYS.BILLS, []);
+  const inventorySource = useGoogleSheets
+    ? sheetInventory
+    : getAllInventoryItems();
+  const challansSource = useGoogleSheets
+    ? sheetChallans
+    : readStorage(STORAGE_KEYS.CHALLANS, []);
+  const customerSource = useGoogleSheets
+    ? sheetCustomers
+    : Object.values(readStorage(STORAGE_KEYS.CUSTOMERS, {}));
   const bills = billsSource.map((b) => {
     let items = b.items || b.Items_JSON || b.items_json || [];
-    if (typeof items === "string") { try { items = JSON.parse(items); } catch { items = []; } }
+    if (typeof items === "string") {
+      try {
+        items = JSON.parse(items);
+      } catch {
+        items = [];
+      }
+    }
     return {
       ...b,
       billNo: readValue(b, "Bill_No", "billNo", "bill_no", "id"),
-      billDate: readValue(b, "Date", "billDate", "date", "Created_At", "createdAt"),
+      billDate: readValue(
+        b,
+        "Date",
+        "billDate",
+        "date",
+        "Created_At",
+        "createdAt",
+      ),
       totalAmount: readNumber(b, "Total_Amount", "totalAmount", "total_amount"),
       paidAmount: readNumber(b, "Paid_Amount", "paidAmount", "paid_amount"),
-      balanceAmount: readNumber(b, "Balance_Amount", "balanceAmount", "balance_amount"),
-      customerName: readValue(b, "Customer_Name", "customerName", "customer_name"),
+      balanceAmount: readNumber(
+        b,
+        "Balance_Amount",
+        "balanceAmount",
+        "balance_amount",
+      ),
+      customerName: readValue(
+        b,
+        "Customer_Name",
+        "customerName",
+        "customer_name",
+      ),
       items: Array.isArray(items) ? items : [],
     };
   });
   const inventory = inventorySource.map((item) => ({
     ...item,
     name: readValue(item, "Name", "name", "Name_MR"),
-    category: readValue(item, "Category", "category", "Category_MR", "Category_EN"),
-    purchasePrice: readNumber(item, "Purchase_Price", "purchasePrice", "purchase_price"),
-    availableStock: readNumber(item, "Available_Stock", "availableStock", "available_stock", "Stock", "Quantity"),
-    minAlertQty: readNumber(item, "Min_Alert_Qty", "minAlertQty", "min_alert_qty") || 10,
+    category: readValue(
+      item,
+      "Category",
+      "category",
+      "Category_MR",
+      "Category_EN",
+    ),
+    purchasePrice: readNumber(
+      item,
+      "Purchase_Price",
+      "purchasePrice",
+      "purchase_price",
+    ),
+    availableStock: readNumber(
+      item,
+      "Available_Stock",
+      "availableStock",
+      "available_stock",
+      "Stock",
+      "Quantity",
+    ),
+    minAlertQty:
+      readNumber(item, "Min_Alert_Qty", "minAlertQty", "min_alert_qty") || 10,
   }));
   const challans = challansSource;
   const customers = customerSource.map((c) => ({
     ...c,
-    customerName: readValue(c, "Customer_Name", "customerName", "customer_name"),
+    customerName: readValue(
+      c,
+      "Customer_Name",
+      "customerName",
+      "customer_name",
+    ),
     mobile: readValue(c, "Mobile", "mobile", "mobile_number"),
-    customerAddress: readValue(c, "Address", "customerAddress", "customer_address"),
-    totalPurchased: readNumber(c, "Total_Purchased", "totalPurchased", "total_purchased"),
-    balanceUdhaari: readNumber(c, "Balance_Udhaari", "balanceUdhaari", "balance_udhari"),
+    customerAddress: readValue(
+      c,
+      "Address",
+      "customerAddress",
+      "customer_address",
+    ),
+    totalPurchased: readNumber(
+      c,
+      "Total_Purchased",
+      "totalPurchased",
+      "total_purchased",
+    ),
+    balanceUdhaari: readNumber(
+      c,
+      "Balance_Udhaari",
+      "balanceUdhaari",
+      "balance_udhari",
+    ),
   }));
 
   let totalSales = 0;
@@ -914,7 +1139,9 @@ async function getLocalDashboardMetrics(filters) {
 
   const startDate = filters.startDate || new Date().toISOString().slice(0, 10);
   const endDate = filters.endDate || startDate;
-  const selectedBills = bills.filter((bill) => bill.billDate >= startDate && bill.billDate <= endDate);
+  const selectedBills = bills.filter(
+    (bill) => bill.billDate >= startDate && bill.billDate <= endDate,
+  );
   const analytics = buildDashboardAnalytics({
     metrics: { bills: selectedBills, inventory },
     period: "custom",
@@ -922,12 +1149,19 @@ async function getLocalDashboardMetrics(filters) {
     toMonth: endDate.slice(0, 7),
     categoryFilter: filters.category || "all",
   });
-  const search = String(filters.search || "").trim().toLowerCase();
+  const search = String(filters.search || "")
+    .trim()
+    .toLowerCase();
   const status = filters.status || "all";
   const matchingBills = analytics.filteredBills.filter((bill) => {
-    const matchesSearch = !search || `${bill.billNo} ${bill.customerName}`.toLowerCase().includes(search);
+    const matchesSearch =
+      !search ||
+      `${bill.billNo} ${bill.customerName}`.toLowerCase().includes(search);
     const hasDue = Number(bill._filteredDue) > 0;
-    return matchesSearch && (status === "all" || (status === "due" ? hasDue : !hasDue));
+    return (
+      matchesSearch &&
+      (status === "all" || (status === "due" ? hasDue : !hasDue))
+    );
   });
   const limit = Math.max(1, Math.min(100, Number(filters.limit) || 5));
   const totalPages = Math.max(1, Math.ceil(matchingBills.length / limit));
@@ -951,7 +1185,9 @@ async function getLocalDashboardMetrics(filters) {
     categoryData: analytics.categoryData,
     billPagination: { page, limit, total: matchingBills.length, totalPages },
     inventory,
-    categories: [...new Set(inventory.map((item) => item.category).filter(Boolean))].sort(),
+    categories: [
+      ...new Set(inventory.map((item) => item.category).filter(Boolean)),
+    ].sort(),
   };
 }
 
@@ -996,11 +1232,27 @@ export async function exportAllToGoogleSheet(webAppUrl) {
     customers: Object.values(readStorage(STORAGE_KEYS.CUSTOMERS, {})),
     users: readStorage(STORAGE_KEYS.USERS, []),
     settings: [
-      { key: "shop_name", value: ShopProp.name, description: "Shop display name" },
-      { key: "full_name", value: ShopProp.fullName, description: "Shop Marathi name" },
-      { key: "owner_name", value: ShopProp.ownerName, description: "Proprietor" },
+      {
+        key: "shop_name",
+        value: ShopProp.name,
+        description: "Shop display name",
+      },
+      {
+        key: "full_name",
+        value: ShopProp.fullName,
+        description: "Shop Marathi name",
+      },
+      {
+        key: "owner_name",
+        value: ShopProp.ownerName,
+        description: "Proprietor",
+      },
       { key: "phone", value: ShopProp.phone, description: "Contact number" },
-      { key: "whatsapp", value: ShopProp.whatsapp, description: "WhatsApp number" },
+      {
+        key: "whatsapp",
+        value: ShopProp.whatsapp,
+        description: "WhatsApp number",
+      },
       { key: "address", value: ShopProp.address, description: "Shop address" },
       { key: "pincode", value: ShopProp.pincode, description: "Postal code" },
     ],
@@ -1020,7 +1272,8 @@ export async function exportAllToGoogleSheet(webAppUrl) {
   // result. A resolved fetch confirms the request was sent, not that Sheets saved it.
   return {
     success: true,
-    message: "Sync request sent to Google Sheets. Check the sheet to confirm the data was saved.",
+    message:
+      "Sync request sent to Google Sheets. Check the sheet to confirm the data was saved.",
   };
 }
 
