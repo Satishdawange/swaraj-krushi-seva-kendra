@@ -2,6 +2,15 @@ import { getCustomerBills, cleanMobileNumber } from "./billingService.js";
 import { getLiveInventoryItems } from "./googleSheetsService.js";
 import { getGeminiApiKey } from "./googleSheetsService.js";
 
+// Read a setting value from the local settings cache (populated from Google Sheet)
+function getSettingValue(key) {
+  try {
+    const cache = JSON.parse(localStorage.getItem('sksk_sheet_settings_cache') || '[]');
+    const found = cache.find(s => s.key === key);
+    return found?.value?.trim() || '';
+  } catch { return ''; }
+}
+
 // Local Storage key for storing custom OpenAI API Key
 export const OPENAI_KEY_STORAGE = "sksk_openai_api_key";
 export const AI_MODEL_STORAGE = "sksk_ai_selected_model";
@@ -9,6 +18,7 @@ export const AI_MODEL_STORAGE = "sksk_ai_selected_model";
 export function getOpenAIKey() {
   return (
     localStorage.getItem(OPENAI_KEY_STORAGE) ||
+    getSettingValue('chatgpt_api_key') ||
     import.meta.env.VITE_OPENAI_API_KEY ||
     ""
   );
@@ -272,14 +282,35 @@ export async function askAgriAdvisor(promptText, history = [], options = {}) {
   }
 
   // 3. Check Gemini API
-  const geminiKey =
-    import.meta.env.VITE_GEMINI_API_KEY || (await getGeminiApiKey());
+  let geminiKey = getSettingValue('gemini_api_key');
+
+  if (!geminiKey) {
+    try {
+      // Priority: Google Sheets Settings tab (live fetch)
+      geminiKey = await getGeminiApiKey();
+    } catch (error) {
+      console.warn(
+        "Could not fetch Gemini API key from Google Sheets:",
+        error.message,
+      );
+      // Fallback: Environment variable
+      geminiKey = import.meta.env.VITE_GEMINI_API_KEY || "";
+    }
+  }
+
   if (geminiKey && geminiKey.trim().length > 10) {
     try {
-      return await callGemini(promptText, geminiKey, history, options.image);
+      return await callGemini(
+        promptText,
+        geminiKey.trim(),
+        history,
+        options.image,
+      );
     } catch (err) {
       console.error("Gemini call failed:", err);
-      return `🌱 माफ करा, AI सेवा तात्पुरती व्यस्त आहे.\n\nकृपया थोड्या वेळाने पुन्हा प्रयत्न करा.\n\n📞 तात्काळ मदतीसाठी निलेश दवंगे (+91 8459568940) यांच्याशी संपर्क साधा.\n\n💡 आपला प्रश्न परत टाईप केल्यास मी पुन्हा प्रयत्न करेन!`;
+
+      return `🌱 माफ करा, AI सेवा तात्पुरती व्यस्त आहे.
+कृपया थोड्या वेळाने पुन्हा प्रयत्न करा.`;
     }
   }
 

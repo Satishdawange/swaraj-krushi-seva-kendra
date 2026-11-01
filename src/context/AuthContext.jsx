@@ -65,6 +65,11 @@ export function AuthProvider({ children }) {
           return;
         }
 
+        if (savedUser?.authProvider === 'local') {
+          setUser(savedUser);
+          return;
+        }
+
         if (savedUser?.authProvider === 'supabase' && supabase) {
           const { data, error } = await supabase.auth.getUser();
           if (error) throw error;
@@ -166,8 +171,54 @@ export function AuthProvider({ children }) {
         setUser(authenticatedUser);
         return authenticatedUser;
       } catch (error) {
+        // If Google Sheets login fails, also check local storage users before throwing
+        const localUsers = JSON.parse(localStorage.getItem('sksk_users_db') || '[]');
+        const matched = localUsers.find(
+          (u) =>
+            (String(u.id || '').trim().toLowerCase() === id ||
+             String(u.username || '').trim().toLowerCase() === id ||
+             String(u.mobile || '').replace(/\D/g, '').slice(-10) === id) &&
+            String(u.password || '').trim() === pwd
+        );
+        if (matched) {
+          const authenticatedUser = {
+            id: matched.id,
+            username: matched.username,
+            role: matched.role || 'customer',
+            fullName: matched.fullName || matched.name || 'ग्राहक',
+            mobile: matched.mobile || '',
+            authProvider: 'local'
+          };
+          saveSession(authenticatedUser);
+          setUser(authenticatedUser);
+          return authenticatedUser;
+        }
+
         if (!id.includes('@')) throw error;
       }
+    }
+
+    // Check local storage users if no Google Sheets connection
+    const localUsers = JSON.parse(localStorage.getItem('sksk_users_db') || '[]');
+    const matched = localUsers.find(
+      (u) =>
+        (String(u.id || '').trim().toLowerCase() === id ||
+         String(u.username || '').trim().toLowerCase() === id ||
+         String(u.mobile || '').replace(/\D/g, '').slice(-10) === id) &&
+        String(u.password || '').trim() === pwd
+    );
+    if (matched) {
+      const authenticatedUser = {
+        id: matched.id,
+        username: matched.username,
+        role: matched.role || 'customer',
+        fullName: matched.fullName || matched.name || 'ग्राहक',
+        mobile: matched.mobile || '',
+        authProvider: 'local'
+      };
+      saveSession(authenticatedUser);
+      setUser(authenticatedUser);
+      return authenticatedUser;
     }
 
     if (id.includes('@') && supabase) {
