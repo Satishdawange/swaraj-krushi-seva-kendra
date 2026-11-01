@@ -9,6 +9,7 @@ import {
   refreshGoogleSheetsData,
   testGoogleSheetsConnection
 } from '../service/googleSheetsService';
+import SavePopup from './SavePopup';
 
 const publicLinks = [
   ['/', 'मुख्यपृष्ठ'],
@@ -257,6 +258,9 @@ export default function AppShell({ children }) {
 
       <main key={dataRefreshVersion}>{children}</main>
 
+      {/* Global Screen Save Notification Popup */}
+      <SavePopup />
+
       <a
         className="whatsapp-float"
         href={`https://wa.me/${whatsapp}?text=${encodeURIComponent('नमस्कार, मला स्वराज कृषी सेवा केंद्रामधून कृषी सल्ला व उत्पादनांची माहिती हवी आहे.')}`}
@@ -303,6 +307,7 @@ export default function AppShell({ children }) {
             <div className="footer-contact">
               <span><Phone size={15} /> {phone}</span>
               <span><MapPin size={15} /> {address}</span>
+              {shop?.gstNumber && <span style={{ color: '#b9dc68', fontWeight: '700' }}>GSTIN: {shop.gstNumber}</span>}
             </div>
           </div>
         </div>

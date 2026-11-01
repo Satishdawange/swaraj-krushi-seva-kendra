@@ -1,3 +1,4 @@
+import { triggerSavePopup } from '../components/SavePopup';
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import '../CSS/changePassword.css';
@@ -30,6 +31,10 @@ export default function ChangePassword() {
       setNewPassword('');
       setConfirmPassword('');
       setSuccess('पासवर्ड यशस्वीरीत्या बदलला.');
+      triggerSavePopup({
+        title: 'पासवर्ड बदलला! ✓',
+        message: 'तुमचा नवीन पासवर्ड यशस्वीरीत्या सेव्ह झाला आहे.'
+      });
     } catch (changeError) {
       setError(changeError.message || 'पासवर्ड बदलता आला नाही.');
     } finally {

@@ -1,3 +1,4 @@
+import { triggerSavePopup } from '../components/SavePopup';
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import jsPDF from 'jspdf';
@@ -102,6 +103,30 @@ export default function CreateChallan() {
 
       const saved = saveDeliveryChallan(challanData);
       setSuccessInfo(saved);
+
+      // Global Screen Save Popup
+      triggerSavePopup({
+        title: 'डिलिव्हरी चालान सेव्ह झाले! ✓',
+        message: `चालान क्र. ${saved.challanNo} यशस्वीरीत्या सेव्ह करण्यात आले आहे.`,
+        details: [
+          { label: 'चालान क्र.', value: saved.challanNo },
+          { label: 'ग्राहक', value: customerName },
+          { label: 'मोबाईल', value: customerMobile },
+          { label: 'एकूण नग संख्या', value: String(items.reduce((s, i) => s + (Number(i.qty) || 0), 0)) }
+        ],
+        actions: [
+          {
+            label: '🖨️ प्रिंट करा',
+            primary: true,
+            onClick: () => handleSaveAndAction('print')
+          },
+          {
+            label: '📥 PDF डाऊनलोड',
+            primary: false,
+            onClick: () => handleSaveAndAction('pdf')
+          }
+        ]
+      });
 
       if (action === 'pdf' || action === 'print') {
         setTimeout(async () => {
@@ -578,6 +603,65 @@ export default function CreateChallan() {
             🧾 थेट बिलात रूपांतर करा (Convert to Bill)
           </button>
         </div>
+
+        {/* Feedback banner directly below challan save buttons */}
+        {successInfo && (
+          <div
+            style={{
+              marginTop: '18px',
+              background: '#eaf6ee',
+              border: '2px solid #22a35a',
+              borderRadius: '14px',
+              padding: '16px 20px',
+              boxShadow: '0 4px 16px rgba(34, 163, 90, 0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '12px'
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '18px' }}>✅</span>
+                <strong style={{ fontSize: '15px', color: '#134023' }}>
+                  चालान क्रमांक {successInfo.challanNo} यशस्वीरीत्या सेव्ह झाले!
+                </strong>
+                <span style={{ background: '#d4ecdc', color: '#135c2d', padding: '3px 8px', borderRadius: '6px', fontSize: '12px', fontWeight: '700' }}>
+                  {items.length} उत्पादने
+                </span>
+              </div>
+              <p style={{ margin: '4px 0 0 26px', fontSize: '13px', color: '#274b33' }}>
+                ग्राहक: <strong>{successInfo.customerName}</strong> ({successInfo.customerMobile}) • वाहन क्र.: {vehicleNo || 'दुकानातून थेट'}
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => handleSaveAndAction('print')}
+                style={{
+                  background: '#176b3a', color: '#ffffff', border: 'none',
+                  padding: '8px 14px', borderRadius: '8px', fontSize: '12.5px',
+                  fontWeight: '700', cursor: 'pointer'
+                }}
+              >
+                🖨️ प्रिंट करा
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveAndAction('pdf')}
+                style={{
+                  background: '#2d4b35', color: '#ffffff', border: 'none',
+                  padding: '8px 14px', borderRadius: '8px', fontSize: '12.5px',
+                  fontWeight: '700', cursor: 'pointer'
+                }}
+              >
+                📥 PDF डाउनलोड करा
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Hidden Printable Challan */}

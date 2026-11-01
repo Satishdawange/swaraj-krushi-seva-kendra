@@ -1,3 +1,4 @@
+import { triggerSavePopup } from '../components/SavePopup';
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import jsPDF from 'jspdf';
@@ -16,6 +17,7 @@ import {
   getLiveInventoryItems,
   saveBillWithInventoryDeduction
 } from '../service/googleSheetsService';
+import { getShopInfo } from '../service/shopService';
 import ShopProp from '../config/shopProps';
 import '../CSS/billing.css';
 
@@ -228,7 +230,8 @@ export default function CreateBill() {
         ? `⚠️ अंशतः भरणा: जमा ₹${billData.paidAmount} | शिल्लक बाकी उधारी: ₹${billData.balanceAmount}`
         : `⚠️ उधारी बिल: पूर्ण ₹${billData.totalAmount} बाकी`);
 
-    const message = `🌾 *स्वराज कृषी सेवा केंद्र, कानमंडाळे* 🌾
+    const shop = getShopInfo();
+    const message = `🌾 *${shop.fullName || 'स्वराज कृषी सेवा केंद्र'}* 🌾
 (खते, बी-बियाणे, कीटकनाशके व कृषी सल्ला)
 
 नमस्कार *${billData.customerName}* जी,
@@ -237,7 +240,7 @@ export default function CreateBill() {
 📄 *बिल क्रमांक:* ${billData.billNo}
 📅 *तारीख:* ${billData.billDate}
 💳 *पेमेंट पद्धत:* ${billData.paymentMode}
-
+${shop.gstNumber ? `🏢 *GSTIN:* ${shop.gstNumber}\n` : ''}
 📦 *मालाचा तपशील:*
 ${itemsSummary}
 
@@ -247,9 +250,8 @@ ${billData.dueDate ? `🗓️ *उधारी जमा तारीख:* ${bil
 ${billData.notes ? `📝 *नोंद:* ${billData.notes}\n` : ''}
 आपण या बिलाची अधिकृत प्रत आमच्या वेबसाईटवरील ग्राहक पोर्टलवरून कधीही डाऊनलोड करू शकता.
 
-आपल्या शेतीविषयक औषधांचे पाण्याचे प्रमाण व डोस विचारण्यासाठी आमच्या AI कृषी मित्राशी संपर्क साधा.
-📞 संपर्क: निलेश त्र्यंबक दवंगे (+91 8459568940)
-धन्यवाद! 🙏`;
+📞 संपर्क: ${shop.ownerName || 'निलेश त्र्यंबक दवंगे'} (${shop.phone || '+91 8459568940'})
+${shop.address ? `📍 पत्ता: ${shop.address}\n` : ''}धन्यवाद! 🙏`;
 
     const waUrl = `https://wa.me/91${clean}?text=${encodeURIComponent(message)}`;
     window.open(waUrl, '_blank');
@@ -315,6 +317,41 @@ ${billData.notes ? `📝 *नोंद:* ${billData.notes}\n` : ''}
         paymentStatus: billData.paymentStatus,
         billData: savedBill,
         isLive: savedBill.isLive
+      });
+
+      // Global Screen Save Popup
+      triggerSavePopup({
+        title: 'बिल यशस्वीरीत्या सेव्ह झाले! 🎉',
+        message: savedBill.isLive
+          ? `बिल क्र. ${billData.billNo} Google Sheet व स्थानिक डेटाबेसमध्ये सुरक्षित सेव्ह झाले आणि इन्व्हेंटरी साठा वजा झाला.`
+          : `बिल क्र. ${billData.billNo} या डिव्हाइसवर सुरक्षित सेव्ह झाले.`,
+        details: [
+          { label: 'बिल क्रमांक', value: billData.billNo },
+          { label: 'ग्राहक', value: billData.customerName },
+          { label: 'एकूण रक्कम', value: `₹ ${billData.totalAmount}` },
+          {
+            label: 'पेमेंट स्थिती',
+            value: billData.balanceAmount > 0 ? `बाकी उधारी: ₹ ${billData.balanceAmount}` : 'पूर्ण भरणा ✓'
+          }
+        ],
+        actions: [
+          {
+            label: '💬 WhatsApp पाठवा',
+            primary: true,
+            bg: '#25D366',
+            onClick: () => handleSendWhatsApp(billData)
+          },
+          {
+            label: '📥 PDF डाऊनलोड',
+            primary: false,
+            onClick: () => triggerPdfDownload(billData)
+          },
+          {
+            label: '➕ नवीन बिल',
+            primary: false,
+            onClick: () => handleResetForm()
+          }
+        ]
       });
 
       if (previewOpen) {
@@ -888,6 +925,83 @@ ${billData.notes ? `📝 *नोंद:* ${billData.notes}\n` : ''}
               📥 PDF डाऊनलोड व सेव्ह
             </button>
           </div>
+
+          {/* Feedback banner directly below save buttons */}
+          {successInfo && (
+            <div
+              style={{
+                marginTop: '18px',
+                background: '#eaf6ee',
+                border: '2px solid #22a35a',
+                borderRadius: '14px',
+                padding: '16px 20px',
+                boxShadow: '0 4px 16px rgba(34, 163, 90, 0.15)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '12px'
+              }}
+            >
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '18px' }}>✅</span>
+                  <strong style={{ fontSize: '15px', color: '#134023' }}>
+                    बिल क्र. {successInfo.billNo} यशस्वीरीत्या सेव्ह झाले!
+                  </strong>
+                  <span style={{ background: '#d4ecdc', color: '#135c2d', padding: '3px 8px', borderRadius: '6px', fontSize: '12px', fontWeight: '700' }}>
+                    एकूण: ₹ {successInfo.totalAmount}
+                  </span>
+                  <span style={{
+                    background: successInfo.balanceAmount > 0 ? '#fef7e0' : '#d4ecdc',
+                    color: successInfo.balanceAmount > 0 ? '#b06000' : '#135c2d',
+                    padding: '3px 8px', borderRadius: '6px', fontSize: '12px', fontWeight: '700'
+                  }}>
+                    {successInfo.balanceAmount > 0 ? `शिल्लक बाकी उधारी: ₹ ${successInfo.balanceAmount}` : 'पूर्ण भरणा ✓'}
+                  </span>
+                </div>
+                <p style={{ margin: '4px 0 0 26px', fontSize: '13px', color: '#274b33' }}>
+                  ग्राहक: <strong>{successInfo.customerName}</strong> (मो. {successInfo.customerMobile}) • {successInfo.isLive ? 'Google Sheet मध्ये नोंद झाली' : 'स्थानिक मोडमध्ये सेव्ह झाले'}
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => handleSendWhatsApp(successInfo.billData)}
+                  style={{
+                    background: '#25D366', color: '#ffffff', border: 'none',
+                    padding: '8px 14px', borderRadius: '8px', fontSize: '12.5px',
+                    fontWeight: '700', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '5px'
+                  }}
+                >
+                  💬 WhatsApp पाठवा
+                </button>
+                <button
+                  type="button"
+                  onClick={() => triggerPdfDownload(currentBill)}
+                  style={{
+                    background: '#176b3a', color: '#ffffff', border: 'none',
+                    padding: '8px 14px', borderRadius: '8px', fontSize: '12.5px',
+                    fontWeight: '700', cursor: 'pointer'
+                  }}
+                >
+                  📥 PDF डाऊनलोड
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetForm}
+                  style={{
+                    background: '#ffffff', color: '#2d3748', border: '1px solid #cbd5e0',
+                    padding: '8px 14px', borderRadius: '8px', fontSize: '12.5px',
+                    fontWeight: '700', cursor: 'pointer'
+                  }}
+                >
+                  ➕ नवीन बिल बनवा
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </form>
 

@@ -1,3 +1,4 @@
+import { triggerSavePopup } from '../components/SavePopup';
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import jsPDF from 'jspdf';
@@ -13,6 +14,7 @@ import {
 } from '../service/billingService';
 import { fetchRecentRecords, getLiveInventoryItems } from '../service/googleSheetsService';
 import { normalizeBillRow } from '../utils/sheetData';
+import { getShopInfo } from '../service/shopService';
 import '../CSS/billing.css';
 
 export default function BillHistory() {
@@ -268,6 +270,24 @@ export default function BillHistory() {
 
       setUpdateSuccess(true);
       setIsEditMode(false);
+
+      // Global Screen Save Popup
+      triggerSavePopup({
+        title: 'बिल बदल सेव्ह झाले! ✓',
+        message: `बिल क्र. ${updatedBill.billNo} मधील बदल यशस्वीरीत्या सेव्ह झाले आहेत.`,
+        details: [
+          { label: 'बिल क्रमांक', value: updatedBill.billNo },
+          { label: 'ग्राहक', value: updatedBill.customerName },
+          { label: 'एकूण रक्कम', value: `₹ ${updatedBill.totalAmount}` }
+        ],
+        actions: [
+          {
+            label: '📥 PDF डाऊनलोड',
+            primary: true,
+            onClick: () => triggerPdfDownload(updatedBill)
+          }
+        ]
+      });
     } catch (err) {
       console.error('Update error:', err);
       alert('बिल अपडेट करताना त्रुटी आली: ' + err.message);
@@ -475,7 +495,7 @@ export default function BillHistory() {
                         </button>
                         <a
                           href={`https://wa.me/91${cMobile}?text=${encodeURIComponent(
-                            `नमस्कार ${bill.customerName || bill.Customer_Name} जी, स्वराज कृषी सेवा केंद्र कानमंडाळे कडून आपले बिल क्र. ${bill.billNo || bill.Bill_No}:\nएकूण: ₹${total}\nजमा: ₹${paid}\nबाकी उधारी: ₹${bal}\nधन्यवाद! - निलेश दवंगे (8459568940)`
+                            `नमस्कार ${bill.customerName || bill.Customer_Name} जी, ${getShopInfo().fullName || 'स्वराज कृषी सेवा केंद्र'} कडून आपले बिल क्र. ${bill.billNo || bill.Bill_No}:\nएकूण: ₹${total}\nजमा: ₹${paid}\nबाकी उधारी: ₹${bal}\nधन्यवाद! - ${getShopInfo().ownerName || 'निलेश दवंगे'} (${getShopInfo().phone || '8459568940'})`
                           )}`}
                           target="_blank"
                           rel="noreferrer"
@@ -975,6 +995,17 @@ export default function BillHistory() {
                       {isProcessing && actionType === 'update_pdf' ? '⏳ अपडेट होत आहे...' : '📥 अपडेट व PDF डाऊनलोड'}
                     </button>
                   </div>
+
+                  {updateSuccess && (
+                    <div style={{
+                      width: '100%', marginTop: '12px',
+                      background: '#def7ec', color: '#03543f',
+                      padding: '10px 14px', borderRadius: '8px',
+                      fontSize: '13px', fontWeight: '700'
+                    }}>
+                      ✅ बिल यशस्वीरीत्या अपडेट झाले!
+                    </div>
+                  )}
                 </div>
               )}
             </div>

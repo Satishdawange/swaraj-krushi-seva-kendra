@@ -70,9 +70,9 @@ ${itemsList || "माहिती उपलब्ध नाही"}
 }
 
 // -----------------------------------------------------------------------------
-// Call ChatGPT (OpenAI API)
+// Call ChatGPT (OpenAI API) with Session Memory & Attachments
 // -----------------------------------------------------------------------------
-async function callChatGPT(messages, apiKey, model = "gpt-4o-mini") {
+async function callChatGPT(promptText, apiKey, history = [], attachment = null, model = "gpt-4o-mini") {
   const url = "https://api.openai.com/v1/chat/completions";
 
   // Inject current inventory snapshot for real-time stock awareness
@@ -85,27 +85,48 @@ async function callChatGPT(messages, apiKey, model = "gpt-4o-mini") {
     )
     .join(", ");
 
-  const systemContent = `You are a helpful agricultural assistant for farmers in Maharashtra, India. Reply in the same language as the user (Marathi, Hindi, or English). Answer directly without forcing a fixed crop and symptom intake flow. Ask a brief follow-up only when essential details are missing. Explain practical next steps and state uncertainty. For pesticide or fertilizer advice, never invent a dose; prioritize label directions, safe handling, and local expert confirmation. Answer non-agricultural questions helpfully when possible.
+  const systemContent = `You are a helpful agricultural assistant for farmers in Maharashtra, India. Reply in the same language as the user (Marathi, Hindi, or English). Answer directly without forcing a fixed crop and symptom intake flow. Keep context of the ongoing conversation in this session so follow-up questions make sense. Ask a brief follow-up only when essential details are missing. Explain practical next steps and state uncertainty. For pesticide or fertilizer advice, never invent a dose; prioritize label directions, safe handling, and local expert confirmation. Answer non-agricultural questions helpfully when possible.
 
 Current shop inventory (use only when asked about product availability; do not provide pricing): ${inventorySnapshot || "No inventory data available."}`;
 
+  // Filter out static welcome message (id: 1 or greeting text)
+  const sessionMessages = (Array.isArray(history) ? history : [])
+    .filter((m) => m && m.id !== 1 && m.text && !m.text.includes('मी स्वराज कृषी'));
+
   const chatMessages = [
-    { role: "system", content: systemContent },
-    ...messages.map((m) => ({
-      role: m.sender === "bot" ? "assistant" : "user",
-      content: m.image
-        ? [
-            {
-              type: "text",
-              text:
-                m.text ||
-                "Please inspect this crop photo and describe visible signs, likely causes, and safe next steps. State uncertainty.",
-            },
-            { type: "image_url", image_url: { url: m.image } },
-          ]
-        : m.text,
-    })),
+    { role: "system", content: systemContent }
   ];
+
+  for (const m of sessionMessages) {
+    const role = (m.sender === "bot" || m.sender === "assistant" || m.role === "assistant") ? "assistant" : "user";
+    if (chatMessages.length === 1 && role !== "user") continue;
+    chatMessages.push({
+      role: role,
+      content: m.text || ""
+    });
+  }
+
+  let userText = promptText || (attachment ? 'कृपया सोबत जोडलेली फाईल तपासून माहिती व सल्ला द्या.' : '');
+  if (attachment?.textContent) {
+    userText += `\n\n[सोबत जोडलेला दस्तऐवज: ${attachment.name}]\n${attachment.textContent}`;
+  } else if (attachment && !attachment.dataUrl) {
+    userText += `\n\n[सोबत जोडलेली फाईल: ${attachment.name} (${Math.round((attachment.size || 0) / 1024)} KB)]`;
+  }
+
+  if (attachment?.dataUrl && attachment.isImage) {
+    chatMessages.push({
+      role: "user",
+      content: [
+        { type: "text", text: userText },
+        { type: "image_url", image_url: { url: attachment.dataUrl } }
+      ]
+    });
+  } else {
+    chatMessages.push({
+      role: "user",
+      content: userText
+    });
+  }
 
   const response = await fetch(url, {
     method: "POST",
@@ -146,30 +167,77 @@ const GEMINI_MODELS = [
   "gemini-3.5-flash", // fallback
 ];
 
-async function callGemini(promptText, geminiKey, history = [], image = null) {
-  const systemText =
-    "You are a helpful agricultural assistant for farmers in Maharashtra, India. Reply in the user language (Marathi, Hindi, or English) and answer directly without forcing a fixed intake flow. Ask only necessary follow-up questions. Never invent pesticide or fertilizer doses; prioritize label directions and safe handling. State uncertainty clearly. Answer any question the farmer asks.";
-  const contents = (Array.isArray(history) ? history.slice(-6) : []).map(
-    (message) => ({
-      role: message.sender === "bot" ? "model" : "user",
-      parts: [{ text: message.text || "" }],
-    }),
-  );
+// Helper: Build Gemini contents adhering to alternating turn rules and session history
+function buildGeminiContents(history, promptText, attachment) {
+  const contents = [];
 
-  const currentParts = [
-    {
-      text:
-        promptText ||
-        "Please inspect this crop photo and describe visible signs, likely causes, and safe next steps. State uncertainty.",
-    },
-  ];
-  if (image?.dataUrl) {
-    const [metadata, data] = image.dataUrl.split(",");
-    const mimeType =
-      metadata.match(/data:([^;]+)/)?.[1] || image.mimeType || "image/jpeg";
-    if (data) currentParts.push({ inline_data: { mime_type: mimeType, data } });
+  // Filter out static welcome message (id: 1 or greeting)
+  const sessionMessages = (Array.isArray(history) ? history : [])
+    .filter((m) => m && m.id !== 1 && m.text && !m.text.includes('मी स्वराज कृषी'));
+
+  for (const msg of sessionMessages) {
+    const role = (msg.sender === 'bot' || msg.sender === 'assistant' || msg.role === 'model') ? 'model' : 'user';
+
+    // Gemini requires the very first turn to be 'user'
+    if (contents.length === 0 && role !== 'user') {
+      continue;
+    }
+
+    // Gemini requires strictly alternating turns: combine consecutive same-role turns
+    if (contents.length > 0 && contents[contents.length - 1].role === role) {
+      contents[contents.length - 1].parts[0].text += '\n' + (msg.text || '');
+    } else {
+      contents.push({
+        role: role,
+        parts: [{ text: msg.text || '' }]
+      });
+    }
   }
-  contents.push({ role: "user", parts: currentParts });
+
+  // Build the current prompt parts
+  const currentParts = [];
+  let userText = promptText || (attachment ? 'कृपया सोबत जोडलेली फाईल तपासून माहिती व उपाय सांगा.' : '');
+
+  if (attachment?.textContent) {
+    userText += `\n\n[सोबत जोडलेला दस्तऐवज: ${attachment.name}]\n${attachment.textContent}`;
+  } else if (attachment && !attachment.dataUrl) {
+    userText += `\n\n[सोबत जोडलेली फाईल: ${attachment.name} (${Math.round((attachment.size || 0) / 1024)} KB)]`;
+  }
+
+  currentParts.push({ text: userText });
+
+  // Handle image or PDF attachment for Gemini inline_data
+  if (attachment?.dataUrl) {
+    const [metadata, data] = attachment.dataUrl.split(',');
+    const mimeType = attachment.mimeType || metadata?.match(/data:([^;]+)/)?.[1] || (attachment.isPdf ? 'application/pdf' : 'image/jpeg');
+    if (data) {
+      currentParts.push({
+        inline_data: {
+          mime_type: mimeType,
+          data: data
+        }
+      });
+    }
+  }
+
+  if (contents.length > 0 && contents[contents.length - 1].role === 'user') {
+    // If the last turn was 'user', append parts to keep alternation
+    contents[contents.length - 1].parts.push(...currentParts);
+  } else {
+    contents.push({
+      role: 'user',
+      parts: currentParts
+    });
+  }
+
+  return contents;
+}
+
+async function callGemini(promptText, geminiKey, history = [], attachment = null) {
+  const systemText =
+    "You are a helpful agricultural assistant for farmers in Maharashtra, India. Reply in the user language (Marathi, Hindi, or English) and answer directly without forcing a fixed intake flow. Keep context from previous chat messages in this session. Ask only necessary follow-up questions. Never invent pesticide or fertilizer doses; prioritize label directions and safe handling. State uncertainty clearly. Answer any question the farmer asks.";
+
+  const contents = buildGeminiContents(history, promptText, attachment);
 
   let lastError;
   for (const model of GEMINI_MODELS) {
@@ -253,16 +321,25 @@ async function callGemini(promptText, geminiKey, history = [], image = null) {
     )
   );
 }
+
 // -----------------------------------------------------------------------------
 // Master Agri Advisor Function
 // -----------------------------------------------------------------------------
 export async function askAgriAdvisor(promptText, history = [], options = {}) {
   // 1. Check if user typed a mobile number for instant bill lookup
-  const mobileMatch = promptText.match(/\b([6-9]\d{9})\b/);
+  const mobileMatch = promptText?.match(/\b([6-9]\d{9})\b/);
   if (mobileMatch) {
     const billResponse = await handleMobileLookup(mobileMatch[1]);
     if (billResponse) return billResponse;
   }
+
+  // Normalize attachment
+  const attachment = options.attachment || (options.image ? {
+    ...options.image,
+    isImage: true,
+    name: options.image.name || 'crop_image.jpg',
+    size: options.image.size || 0
+  } : null);
 
   // 2. Check OpenAI ChatGPT
   const openAiKey = getOpenAIKey();
@@ -270,11 +347,7 @@ export async function askAgriAdvisor(promptText, history = [], options = {}) {
 
   if (openAiKey && openAiKey.trim().length > 10) {
     try {
-      const messages = [
-        ...history,
-        { sender: "user", text: promptText, image: options.image?.dataUrl },
-      ];
-      return await callChatGPT(messages, openAiKey, selectedModel);
+      return await callChatGPT(promptText, openAiKey, history, attachment, selectedModel);
     } catch (err) {
       console.error("OpenAI ChatGPT call failed:", err);
       throw err;
@@ -304,7 +377,7 @@ export async function askAgriAdvisor(promptText, history = [], options = {}) {
         promptText,
         geminiKey.trim(),
         history,
-        options.image,
+        attachment,
       );
     } catch (err) {
       console.error("Gemini call failed:", err);

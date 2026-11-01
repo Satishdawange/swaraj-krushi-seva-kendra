@@ -225,6 +225,38 @@ function handleRequest(e) {
         })();
         break;
         
+      case 'saveCategory':
+        result = (function() {
+          if (!params.data || (!params.data.id && !params.data.Category_ID && !params.data.name && !params.data.Name_MR)) {
+            return { success: false, error: 'Category data required' };
+          }
+          let catSheet = ss.getSheetByName(TABS.CATEGORIES);
+          if (!catSheet) { initAllTabs(ss); catSheet = ss.getSheetByName(TABS.CATEGORIES); }
+          const catId = String(params.data.id || params.data.Category_ID || ('cat_' + new Date().getTime())).trim();
+          const nameMr = String(params.data.name || params.data.Name_MR || '').trim();
+          const nameEn = String(params.data.nameEn || params.data.Name_EN || '').trim();
+          const isActive = params.data.isActive !== undefined ? Boolean(params.data.isActive) : (params.data.Is_Active !== undefined ? Boolean(params.data.Is_Active) : true);
+          const sortOrder = Number(params.data.sortOrder ?? params.data.Sort_Order ?? 0);
+          const now = new Date().toISOString();
+          const lr = catSheet.getLastRow();
+          if (lr > 1) {
+            const allIds = catSheet.getRange(2, 1, lr - 1, 1).getValues().map(function(r) { return String(r[0]).trim().toLowerCase(); });
+            const idx = allIds.indexOf(catId.toLowerCase());
+            if (idx !== -1) {
+              const rowNum = idx + 2;
+              catSheet.getRange(rowNum, 2).setValue(nameMr);
+              catSheet.getRange(rowNum, 3).setValue(nameEn);
+              catSheet.getRange(rowNum, 4).setValue(isActive);
+              catSheet.getRange(rowNum, 5).setValue(sortOrder);
+              catSheet.getRange(rowNum, 7).setValue(now);
+              return { success: true, updated: true, id: catId };
+            }
+          }
+          catSheet.appendRow([catId, nameMr, nameEn, isActive, sortOrder, now, now]);
+          return { success: true, inserted: true, id: catId };
+        })();
+        break;
+
       case 'syncAll':
         result = bulkSyncData(ss, params.data);
         break;
@@ -680,17 +712,32 @@ function getBillsForCustomer(ss, token) {
   if (!session.valid || !session.user || session.user.role !== 'customer') {
     return { success: false, error: 'A valid customer session is required.' };
   }
-  const mobile = String(session.user.mobile || String(session.user.id || '').replace(/^CUST-/i, ''))
-    .replace(/\D/g, '').slice(-10);
+  const mobile = String(
+    session.user.mobile ||
+    session.user.username ||
+    session.user.phone ||
+    String(session.user.id || '').replace(/^CUST-/i, '')
+  ).replace(/\D/g, '').slice(-10);
   if (!mobile) return { success: false, error: 'No mobile number is associated with this account.' };
 
   const data = getAllBillRecords(ss).filter(function(record) {
-    const rowMobile = String(getRecordValue(record, 'Mobile') || getRecordValue(record, 'Customer_Mobile') || '')
-      .replace(/\D/g, '').slice(-10);
+    const rowMobile = String(
+      getRecordValue(record, 'Mobile') ||
+      getRecordValue(record, 'Customer_Mobile') ||
+      getRecordValue(record, 'mobile') ||
+      ''
+    ).replace(/\D/g, '').slice(-10);
     return rowMobile === mobile;
   }).sort(function(a, b) {
     return dashboardBillDateKey(b).localeCompare(dashboardBillDateKey(a));
   }).map(function(record) {
+    const rowMobile = String(
+      getRecordValue(record, 'Mobile') ||
+      getRecordValue(record, 'Customer_Mobile') ||
+      getRecordValue(record, 'mobile') ||
+      mobile
+    ).replace(/\D/g, '').slice(-10);
+
     let sourceItems = getRecordValue(record, 'Items_JSON') || getRecordValue(record, 'Items') || [];
     if (typeof sourceItems === 'string') {
       try { sourceItems = JSON.parse(sourceItems || '[]'); } catch (error) { sourceItems = []; }
@@ -701,14 +748,26 @@ function getBillsForCustomer(ss, token) {
         name: item.name || item.Name || item.Name_MR || '',
         nameEn: item.nameEn || item.Name_EN || item.name_en || '',
         qty: Number(item.qty || item.Quantity || item.quantity || 0),
-        unit: item.unit || item.Unit || 'नग'
+        unit: item.unit || item.Unit || 'नग',
+        price: Number(item.price || item.Price || 0),
+        total: Number(item.total || item.Total || 0)
       };
     });
     return {
       Bill_No: getRecordValue(record, 'Bill_No') || '',
       Billbook_Bill_No: getRecordValue(record, 'Billbook_Bill_No') || '',
       Date: dashboardBillDateKey(record),
-      Items_JSON: JSON.stringify(safeItems)
+      Customer_Name: getRecordValue(record, 'Customer_Name') || getRecordValue(record, 'Name') || '',
+      Customer_Mobile: rowMobile,
+      Mobile: rowMobile,
+      Customer_Address: getRecordValue(record, 'Customer_Address') || getRecordValue(record, 'Address') || '',
+      Total_Amount: Number(getRecordValue(record, 'Total_Amount') || 0),
+      Paid_Amount: Number(getRecordValue(record, 'Paid_Amount') || 0),
+      Balance_Amount: Number(getRecordValue(record, 'Balance_Amount') || 0),
+      Payment_Status: getRecordValue(record, 'Payment_Status') || '',
+      Payment_Mode: getRecordValue(record, 'Payment_Mode') || 'Cash',
+      Items_JSON: JSON.stringify(safeItems),
+      Notes: getRecordValue(record, 'Notes') || ''
     };
   });
   return { success: true, data: data, total: data.length };

@@ -1,3 +1,4 @@
+import { triggerSavePopup } from '../components/SavePopup';
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -9,6 +10,7 @@ import {
   recordBulkPurchaseLot
 } from '../service/googleSheetsService';
 import { normalizeInventoryRow, normalizePurchaseLotRow } from '../utils/sheetData';
+import { getShopInfo } from '../service/shopService';
 import InventoryProductPicker from '../components/InventoryProductPicker';
 import '../CSS/billing.css';
 
@@ -73,7 +75,8 @@ export default function Inventory() {
   const [bulkQty, setBulkQty] = useState(50);
   const [totalCost, setTotalCost] = useState('');
   const [sellingPrice, setSellingPrice] = useState('');
-  const [minAlertQty, setMinAlertQty] = useState(10);
+  const defaultAlertLimit = getShopInfo().lowStockAlertQty || 5;
+  const [minAlertQty, setMinAlertQty] = useState(defaultAlertLimit);
   const [notes, setNotes] = useState('');
   const [purchaseSuccess, setPurchaseSuccess] = useState('');
   const [purchaseError, setPurchaseError] = useState('');
@@ -285,6 +288,17 @@ export default function Inventory() {
       });
 
       setPurchaseSuccess(`✅ '${result.productName}' चे ${result.bulkQty} ${result.unit} इन्व्हेंटरीमध्ये जोडले. ${result.isLive ? 'Google Sheet अद्ययावत झाली.' : 'फक्त स्थानिक कॅश जतन झाली.'}`);
+
+      // Global Screen Save Popup
+      triggerSavePopup({
+        title: 'खरेदी नोंद सेव्ह झाली! ✓',
+        message: `'${result.productName}' चे ${result.bulkQty} ${result.unit} इन्व्हेंटरीमध्ये जोडले.`,
+        details: [
+          { label: 'उत्पादन', value: result.productName },
+          { label: 'संख्या', value: `${result.bulkQty} ${result.unit}` },
+          { label: 'विक्री किंमत', value: `₹ ${result.sellingPrice}` }
+        ]
+      });
       setAllInventoryRows(await getLiveInventoryItems());
       setProductName('');
       setSelectedPurchaseId('');
@@ -306,13 +320,25 @@ export default function Inventory() {
   const handleSaveAdjustment = () => {
     if (!adjustItem || !adjustDelta) return;
     adjustInventoryStock(adjustItem.id, Number(adjustDelta), adjustReason);
+
+    // Global Screen Save Popup
+    triggerSavePopup({
+      title: 'साठा ॲडजस्ट झाला! ✓',
+      message: `${adjustItem.name} चा साठा ${Number(adjustDelta) > 0 ? '+' : ''}${adjustDelta} ने बदलला.`,
+      details: [
+        { label: 'उत्पादन', value: adjustItem.name },
+        { label: 'बदल', value: `${Number(adjustDelta) > 0 ? '+' : ''}${adjustDelta}` },
+        { label: 'कारण', value: adjustReason }
+      ]
+    });
+
     setAdjustItem(null);
     setAdjustDelta('');
     loadInventoryData(currentPage);
   };
 
   // Low stock products
-  const lowStockList = inventoryList.filter(i => Number(i.availableStock) <= Number(i.minAlertQty || 10));
+  const lowStockList = inventoryList.filter(i => Number(i.availableStock) <= Number(i.minAlertQty || defaultAlertLimit));
 
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '24px 16px' }}>
@@ -926,6 +952,21 @@ export default function Inventory() {
             >
               {purchaseSaving ? '⏳ खरेदी नोंद जतन होत आहे…' : '📥 खरेदी नोंद जतन करा व साठा वाढवा'}
             </button>
+
+            {purchaseSuccess && (
+              <div style={{
+                marginTop: '14px',
+                padding: '12px 16px',
+                borderRadius: '10px',
+                background: '#def7ec',
+                color: '#03543f',
+                fontSize: '13.5px',
+                fontWeight: '700',
+                border: '1.5px solid #bcf0da'
+              }}>
+                {purchaseSuccess}
+              </div>
+            )}
           </form>
         </div>
       )}

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { fetchMyCustomerBills, getLiveInventoryItems } from '../service/googleSheetsService';
 import { normalizeBillRow, normalizeInventoryRow } from '../utils/sheetData';
+import { getShopInfo } from '../service/shopService';
 import '../CSS/customerPortal.css';
 
 const digits = (value) => String(value || '').replace(/\D/g, '').slice(-10);
@@ -25,11 +26,26 @@ export default function CustomerPortal() {
       setError('');
       try {
         const [billRows, inventoryRows] = await Promise.all([
-          fetchMyCustomerBills(),
+          fetchMyCustomerBills(userMobile),
           getLiveInventoryItems()
         ]);
         if (!active) return;
-        const ownBills = billRows.map(normalizeBillRow).filter((bill) => digits(bill.customerMobile) === userMobile);
+
+        const ownBills = billRows.map(normalizeBillRow).filter((bill) => {
+          const bMobile = digits(bill.customerMobile);
+          // If bill has a mobile, verify it matches
+          if (bMobile && userMobile) {
+            return bMobile === userMobile;
+          }
+          // If bill came from fetchMyCustomerBills specifically for this customer, keep it
+          return true;
+        });
+
+        // Ensure customerMobile is set on all own bills
+        ownBills.forEach(b => {
+          if (!b.customerMobile) b.customerMobile = userMobile;
+        });
+
         setBills(ownBills);
         setInventory(inventoryRows.map(normalizeInventoryRow));
       } catch (loadError) {
@@ -45,10 +61,12 @@ export default function CustomerPortal() {
   const purchasedProducts = useMemo(() => {
     const products = new Map();
     bills.forEach((bill) => {
-      bill.items.forEach((billItem) => {
+      const itemsList = Array.isArray(bill.items) ? bill.items : [];
+      itemsList.forEach((billItem) => {
         const itemName = String(billItem.name || billItem.nameEn || '').trim();
+        if (!itemName) return;
         const inventoryItem = inventory.find((entry) => {
-          const idMatch = [billItem.inventoryId, billItem.productId].filter(Boolean)
+          const idMatch = [billItem.inventoryId, billItem.productId, billItem.id].filter(Boolean)
             .some((id) => String(entry.id) === String(id) || String(entry.Product_ID || '') === String(id));
           const nameMatch = [entry.name, entry.nameEn].filter(Boolean)
             .some((name) => name.trim().toLowerCase() === itemName.toLowerCase());
@@ -87,14 +105,27 @@ export default function CustomerPortal() {
           <p>मोबाईल: {userMobile || 'उपलब्ध नाही'}</p>
         </div>
         <div className="customer-account-actions">
+          <a
+            href={`https://wa.me/${getShopInfo().whatsapp || '918459568940'}?text=${encodeURIComponent('नमस्कार, मी स्वराज कृषी सेवा केंद्र ग्राहक पोर्टलवरून संपर्क करत आहे.')}`}
+            target="_blank"
+            rel="noreferrer"
+            className="customer-account-secondary"
+            style={{ background: '#25D366', color: '#fff', border: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+          >
+            💬 WhatsApp संपर्क
+          </a>
           <Link to="/account/password" className="customer-account-secondary">पासवर्ड बदला</Link>
           <button type="button" onClick={signOut}>लॉगआउट</button>
         </div>
       </header>
 
       <nav className="customer-account-tabs" aria-label="ग्राहक खाते माहिती">
-        <button type="button" className={activeTab === 'bills' ? 'active' : ''} onClick={() => setActiveTab('bills')}>माझी बिले <span>{bills.length}</span></button>
-        <button type="button" className={activeTab === 'products' ? 'active' : ''} onClick={() => setActiveTab('products')}>खरेदी उत्पादने <span>{purchasedProducts.length}</span></button>
+        <button type="button" className={activeTab === 'bills' ? 'active' : ''} onClick={() => setActiveTab('bills')}>
+          माझी बिले <span>{bills.length}</span>
+        </button>
+        <button type="button" className={activeTab === 'products' ? 'active' : ''} onClick={() => setActiveTab('products')}>
+          खरेदी उत्पादने <span>{purchasedProducts.length}</span>
+        </button>
       </nav>
 
       {error && <div className="customer-account-message" role="alert">{error}</div>}
@@ -106,13 +137,46 @@ export default function CustomerPortal() {
         ) : (
           <div className="customer-account-table-wrap">
             <table className="customer-account-table">
-              <thead><tr><th>बिल क्रमांक</th><th>तारीख</th><th>खरेदी केलेली उत्पादने</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>बिल क्रमांक</th>
+                  <th>तारीख</th>
+                  <th>खरेदी केलेली उत्पादने</th>
+                  <th>रक्कम</th>
+                  <th>पेमेंट स्थिती</th>
+                </tr>
+              </thead>
               <tbody>
                 {bills.map((bill) => (
                   <tr key={bill.billNo}>
-                    <td><strong>{bill.billNo}</strong>{bill.billBookBillNo && <small>बुक: {bill.billBookBillNo}</small>}</td>
+                    <td>
+                      <strong style={{ color: '#176b3a' }}>{bill.billNo}</strong>
+                      {bill.billBookBillNo && (
+                        <small style={{ display: 'block', color: '#65776d' }}>बुक: {bill.billBookBillNo}</small>
+                      )}
+                    </td>
                     <td>{bill.billDate || '—'}</td>
-                    <td>{bill.items.map((item) => `${item.name || item.nameEn} (${item.qty} ${item.unit || 'नग'})`).join(', ') || '—'}</td>
+                    <td>
+                      {Array.isArray(bill.items) && bill.items.length > 0
+                        ? bill.items.map((item) => `${item.name || item.nameEn} (${item.qty} ${item.unit || 'नग'})`).join(', ')
+                        : '—'}
+                    </td>
+                    <td>
+                      <strong>₹ {Number(bill.totalAmount || 0).toLocaleString('en-IN')}</strong>
+                    </td>
+                    <td>
+                      <span style={{
+                        display: 'inline-block',
+                        padding: '2px 8px',
+                        borderRadius: '6px',
+                        fontSize: '11.5px',
+                        fontWeight: '700',
+                        background: Number(bill.balanceAmount || 0) > 0 ? '#fef7e0' : '#def7ec',
+                        color: Number(bill.balanceAmount || 0) > 0 ? '#b06000' : '#03543f'
+                      }}>
+                        {Number(bill.balanceAmount || 0) > 0 ? `बाकी: ₹ ${bill.balanceAmount}` : 'पूर्ण भरणा ✓'}
+                      </span>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -131,7 +195,10 @@ export default function CustomerPortal() {
                 {product.nameEn && product.nameEn !== product.name && <span>{product.nameEn}</span>}
                 <small>{[product.category, product.company, product.crops, product.usage].filter(Boolean).join(' · ')}</small>
               </div>
-              <div className="customer-purchased-quantity"><strong>{product.quantity} {product.unit}</strong><small>एकूण खरेदी प्रमाण</small></div>
+              <div className="customer-purchased-quantity">
+                <strong>{product.quantity} {product.unit}</strong>
+                <small>एकूण खरेदी प्रमाण</small>
+              </div>
               <time>{product.lastPurchased || '—'}</time>
             </article>
           ))}
