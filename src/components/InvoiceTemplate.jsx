@@ -21,7 +21,9 @@ const InvoiceTemplate = forwardRef(({ bill }, ref) => {
     balanceAmount = null,
     paymentStatus = 'Fully Paid',
     paymentMode = 'Cash',
-    notes = ''
+    notes = '',
+    isConsultancy = false,
+    consultancyCrop = ''
   } = bill;
 
   const grandTotal = Number(totalAmount || 0);
@@ -203,6 +205,11 @@ const InvoiceTemplate = forwardRef(({ bill }, ref) => {
             <div style={{ marginTop: '6px', color: '#4a5d50' }}>
               <span style={{ color: '#6e8173', fontSize: '11px' }}>पत्ता (Address): </span>
               {customerAddress}
+            </div>
+          )}
+          {isConsultancy && (
+            <div style={{ marginTop: '6px', display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#eaf5eb', color: '#137333', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '700', border: '1px solid #b6e0be' }}>
+              🌱 कन्सल्टन्सी पीक: {consultancyCrop || 'सल्ला'}
             </div>
           )}
         </div>

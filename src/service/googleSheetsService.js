@@ -12,6 +12,7 @@ import {
   getDashboardMetricsCache,
   setDashboardMetricsCache,
 } from "../utils/dashboardCache";
+import { initialConsultancyServices, DEFAULT_SERVICE_IMAGE } from "../data/consultancyServices";
 
 export {
   clearDashboardMetricsCache,
@@ -19,7 +20,7 @@ export {
   setDashboardMetricsCache,
 };
 
-const STORAGE_KEYS = {
+export const STORAGE_KEYS = {
   SHEETS_CONFIG: "sksk_sheets_config",
   INVENTORY: "sksk_inventory_db",
   PURCHASES: "sksk_purchase_lots_db",
@@ -28,12 +29,51 @@ const STORAGE_KEYS = {
   CUSTOMERS: "sksk_customers_db",
   USERS: "sksk_users_db",
   STATS: "sksk_cached_stats",
+  SERVICES: "sksk_services_db",
+  CONSULTANCY_CUSTOMERS: "sksk_consultancy_customers_db",
 };
 const AUTH_TOKEN_STORAGE_KEY = "sksk_auth_session_token";
 
-const DEFAULT_GOOGLE_SHEETS_API_URL =
+export const DEFAULT_GOOGLE_SHEETS_API_URL =
   "https://script.google.com/macros/s/AKfycbxFuQ3TatmFB7jrVPcmjI1RF70HN_wpPtP_Wb3XA_Cfe8kitxFuJ95boUZA5Ac3oqklug/exec";
 const REQUIRED_GOOGLE_SHEETS_API_VERSION = "sksk-customer-portal-v10";
+
+// Default seed shop customers to guarantee instant loading even before network response
+export const DEFAULT_SHOP_CUSTOMERS = [
+  {
+    mobile: '7507808795',
+    name: 'Satish Trambak Dawange',
+    address: 'Kanmandale, Tal- Chandawad',
+    totalBills: 5,
+    totalPurchased: 9700,
+    totalPaid: 9700,
+    balanceUdhaari: 0,
+    lastVisit: '2026-11-01',
+    bills: []
+  },
+  {
+    mobile: '9075798442',
+    name: 'Neha Dawange',
+    address: 'Kanmandale village',
+    totalBills: 5,
+    totalPurchased: 8575,
+    totalPaid: 8575,
+    balanceUdhaari: 0,
+    lastVisit: '2026-11-01',
+    bills: []
+  },
+  {
+    mobile: '9370621253',
+    name: 'satish dawange',
+    address: 'Kanmandale',
+    totalBills: 5,
+    totalPurchased: 13800,
+    totalPaid: 13800,
+    balanceUdhaari: 0,
+    lastVisit: '2026-10-31',
+    bills: []
+  }
+];
 
 // Default initial inventory seeded from products.js
 function getInitialInventory() {
@@ -59,7 +99,7 @@ function getInitialInventory() {
 }
 
 // LocalStorage helpers
-function readStorage(key, defaultValue) {
+export function readStorage(key, defaultValue) {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) return defaultValue;
@@ -70,7 +110,7 @@ function readStorage(key, defaultValue) {
   }
 }
 
-function writeStorage(key, value) {
+export function writeStorage(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch (e) {
@@ -98,8 +138,18 @@ export function initLocalDatabase() {
   if (!localStorage.getItem(STORAGE_KEYS.PURCHASES)) {
     writeStorage(STORAGE_KEYS.PURCHASES, []);
   }
-  if (!localStorage.getItem(STORAGE_KEYS.CUSTOMERS)) {
-    writeStorage(STORAGE_KEYS.CUSTOMERS, {});
+  
+  // Seed initial shop customers if missing
+  const existingCustMap = readStorage(STORAGE_KEYS.CUSTOMERS, {}) || {};
+  let updatedCust = false;
+  DEFAULT_SHOP_CUSTOMERS.forEach((c) => {
+    if (!existingCustMap[c.mobile]) {
+      existingCustMap[c.mobile] = c;
+      updatedCust = true;
+    }
+  });
+  if (updatedCust || !localStorage.getItem(STORAGE_KEYS.CUSTOMERS)) {
+    writeStorage(STORAGE_KEYS.CUSTOMERS, existingCustMap);
   }
 }
 
@@ -141,36 +191,68 @@ export function saveGoogleSheetsConfig(config) {
   return updated;
 }
 
-export async function fetchGoogleSheetRecords(sheetName) {
-  const url = getGoogleSheetsConfig().webAppUrl.trim();
-  if (!url)
-    throw new Error("Google Apps Script Web App URL is not configured.");
+const sheetRecordsCache = new Map();
+const inFlightSheetRequests = new Map();
 
-  const query = new URLSearchParams({ action: "getAll", sheetName });
-  if (
-    sheetName === "Bills" ||
-    sheetName === "Customers" ||
-    sheetName === "Inventory" ||
-    sheetName === "Products"
-  ) {
-    const token = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
-    if (token) query.set("token", token);
+export async function fetchGoogleSheetRecords(sheetName, forceRefresh = false) {
+  const normSheet = String(sheetName || '').trim();
+  if (!normSheet) return [];
+
+  if (!forceRefresh && sheetRecordsCache.has(normSheet)) {
+    const cached = sheetRecordsCache.get(normSheet);
+    if (Date.now() - cached.timestamp < 15000) {
+      return cached.data;
+    }
   }
-  const response = await fetch(
-    `${url}${url.includes("?") ? "&" : "?"}${query}`,
-    {
-      method: "GET",
-      mode: "cors",
-      cache: "no-store",
-    },
-  );
-  if (!response.ok)
-    throw new Error(`Google Sheets request failed (${response.status}).`);
 
-  const result = await response.json();
-  if (!result.success)
-    throw new Error(result.error || `Could not read ${sheetName}.`);
-  return Array.isArray(result.data) ? result.data : [];
+  if (inFlightSheetRequests.has(normSheet)) {
+    return inFlightSheetRequests.get(normSheet);
+  }
+
+  const requestPromise = (async () => {
+    const configUrl = getGoogleSheetsConfig().webAppUrl.trim();
+    const urlsToTry = [];
+    if (configUrl) urlsToTry.push(configUrl);
+    if (!urlsToTry.includes(DEFAULT_GOOGLE_SHEETS_API_URL)) {
+      urlsToTry.push(DEFAULT_GOOGLE_SHEETS_API_URL);
+    }
+
+    const token = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+
+    for (const targetUrl of urlsToTry) {
+      const attempts = token ? [{ withToken: true }, { withToken: false }] : [{ withToken: false }];
+      for (const attempt of attempts) {
+        try {
+          const query = new URLSearchParams({ action: "getAll", sheetName: normSheet });
+          if (attempt.withToken && token) query.set("token", token);
+
+          const response = await fetch(
+            `${targetUrl}${targetUrl.includes("?") ? "&" : "?"}${query}`,
+            {
+              method: "GET",
+              mode: "cors",
+              cache: "no-store",
+            },
+          );
+          if (!response.ok) continue;
+
+          const result = await response.json();
+          if (result && result.success && Array.isArray(result.data)) {
+            sheetRecordsCache.set(normSheet, { data: result.data, timestamp: Date.now() });
+            return result.data;
+          }
+        } catch (e) {
+          // Fall through to next attempt or default URL
+        }
+      }
+    }
+    return [];
+  })().finally(() => {
+    inFlightSheetRequests.delete(normSheet);
+  });
+
+  inFlightSheetRequests.set(normSheet, requestPromise);
+  return requestPromise;
 }
 
 async function sendGoogleSheetsAuthAction(action, data) {
@@ -892,9 +974,25 @@ export async function saveBillWithInventoryDeduction(billData) {
       billData.paymentStatus ||
       (balance === 0 ? "Fully Paid" : paid > 0 ? "Half Paid" : "Not Paid"),
     paymentMode: billData.paymentMode || "Cash",
+    isConsultancy: Boolean(billData.isConsultancy || billData.Is_Consultancy_Customer),
+    Is_Consultancy_Customer: Boolean(billData.isConsultancy || billData.Is_Consultancy_Customer),
+    consultancyCrop: String(billData.consultancyCrop || billData.Consultancy_Crop || ""),
+    Consultancy_Crop: String(billData.consultancyCrop || billData.Consultancy_Crop || ""),
     createdAt: billData.createdAt || new Date().toISOString(),
     billDate: billData.billDate || new Date().toISOString().split("T")[0],
   };
+
+  // If this bill is for a consultancy customer, ensure customer is registered in Consultancy_Customers
+  if (billData.isConsultancy && billData.customerMobile) {
+    try {
+      saveConsultancyCustomer({
+        name: billData.customerName,
+        mobile: billData.customerMobile,
+        crop: billData.consultancyCrop || 'इतर',
+        address: billData.customerAddress || ''
+      }).catch(e => console.warn('Auto-save consultancy customer non-blocking error:', e));
+    } catch {}
+  }
 
   const config = getGoogleSheetsConfig();
   let isLive = false;
@@ -1507,6 +1605,475 @@ export async function saveSheetCategory(categoryData) {
 
   return { success: true };
 }
+
+// ─── Fetch Services from Google Sheets or Seed ────────────────────────────────
+export async function fetchAllServices() {
+  try {
+    const rows = await fetchGoogleSheetRecords('Services');
+    if (Array.isArray(rows) && rows.length > 0) {
+      return rows.map((r, idx) => ({
+        id: String(r.Service_ID || r.id || ('serv_' + (idx + 1))).trim(),
+        nameMr: String(r.Name_MR || r.nameMr || r.name || '').trim(),
+        nameEn: String(r.Name_EN || r.nameEn || '').trim(),
+        crop: String(r.Crop || r.crop || r.Name_MR || '').trim(),
+        cardImageUrl: String(r.Card_Image_URL || r.cardImageUrl || r.image || '').trim(),
+        slideshowImages: String(r.Slideshow_Images || r.slideshowImages || '').trim(),
+        descriptionMr: String(r.Description_MR || r.descriptionMr || r.description || '').trim(),
+        descriptionEn: String(r.Description_EN || r.descriptionEn || '').trim(),
+        keyBenefitsMr: String(r.Key_Benefits_MR || r.keyBenefitsMr || '').trim(),
+        farmerFeedback: String(r.Farmer_Feedback || r.farmerFeedback || '').trim(),
+        isActive: r.Is_Active !== undefined ? (String(r.Is_Active).toLowerCase() === 'true' || r.Is_Active === true) : true,
+        showOnPortal: r.Show_On_Portal !== undefined ? (String(r.Show_On_Portal).toLowerCase() === 'true' || r.Show_On_Portal === true) : true,
+        sortOrder: Number(r.Sort_Order ?? r.sortOrder ?? idx + 1),
+        createdAt: r.Created_At || r.createdAt || '',
+        updatedAt: r.Updated_At || r.updatedAt || ''
+      })).filter(s => s.nameMr || s.nameEn);
+    }
+  } catch (err) {
+    console.warn('fetchAllServices sheet fetch error, using local/seed fallback:', err.message);
+  }
+
+  // Check localStorage or initialConsultancyServices
+  const local = readStorage(STORAGE_KEYS.SERVICES, null);
+  if (Array.isArray(local) && local.length > 0) {
+    return local;
+  }
+  return initialConsultancyServices;
+}
+
+// ─── Save / Update a Service in Google Sheet ─────────────────────────────────
+export async function saveServiceItem(serviceData) {
+  const config = getGoogleSheetsConfig();
+  const sId = serviceData.id || ('serv_' + Date.now());
+
+  const payload = {
+    action: 'saveService',
+    data: {
+      Service_ID: sId,
+      Name_MR: serviceData.nameMr || '',
+      Name_EN: serviceData.nameEn || '',
+      Card_Image_URL: serviceData.cardImageUrl || '',
+      Slideshow_Images: serviceData.slideshowImages || '',
+      Description_MR: serviceData.descriptionMr || '',
+      Description_EN: serviceData.descriptionEn || '',
+      Key_Benefits_MR: serviceData.keyBenefitsMr || '',
+      Farmer_Feedback: serviceData.farmerFeedback || '',
+      Is_Active: serviceData.isActive !== false,
+      Show_On_Portal: serviceData.showOnPortal !== false,
+      Sort_Order: Number(serviceData.sortOrder || 1)
+    }
+  };
+
+  // Update local storage cache
+  const local = readStorage(STORAGE_KEYS.SERVICES, initialConsultancyServices);
+  const updatedLocal = local.some(s => s.id === sId)
+    ? local.map(s => s.id === sId ? { ...s, ...serviceData, id: sId } : s)
+    : [...local, { ...serviceData, id: sId }];
+  writeStorage(STORAGE_KEYS.SERVICES, updatedLocal);
+
+  if (config.webAppUrl) {
+    await fetch(config.webAppUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    });
+  }
+
+  return { success: true, id: sId };
+}
+
+// ─── Fetch All Consultancy Customers ──────────────────────────────────────────
+export async function fetchAllConsultancyCustomers(forceRefresh = false) {
+  const customerMap = new Map();
+
+  // 1. Try fetching from Google Sheet Consultancy_Customers tab
+  try {
+    const rows = await fetchGoogleSheetRecords('Consultancy_Customers', forceRefresh);
+    if (Array.isArray(rows) && rows.length > 0) {
+      rows.forEach((r, idx) => {
+        const mob = String(r.Mobile || r.mobile || '').replace(/\D/g, '').slice(-10);
+        const name = String(r.Customer_Name || r.name || r.Name || '').trim();
+        if (mob || name) {
+          const key = mob || name;
+          customerMap.set(key, {
+            id: String(r.ID || r.id || ('CC_' + (mob || (idx + 1)))).trim(),
+            name: name || 'शेतकरी',
+            mobile: mob,
+            crop: String(r.Crop || r.crop || 'इतर').trim(),
+            address: String(r.Address || r.address || '').trim(),
+            status: String(r.Status || r.status || 'Active').trim(),
+            areaAcres: String(r.Area_Acres || r.areaAcres || '1').trim(),
+            startDate: r.Start_Date || r.startDate || '',
+            notes: String(r.Notes || r.notes || '').trim(),
+            createdAt: r.Created_At || r.createdAt || '',
+            updatedAt: r.Updated_At || r.updatedAt || ''
+          });
+        }
+      });
+    }
+  } catch (err) {
+    console.warn('fetchAllConsultancyCustomers sheet fetch fallback:', err.message);
+  }
+
+  // 2. Also scan any bills marked with consultancy
+  try {
+    const allBills = await fetchAllBills();
+    allBills.forEach((b) => {
+      const isCons = b.isConsultancy || b.Is_Consultancy_Customer;
+      const crop = b.consultancyCrop || b.Consultancy_Crop;
+      if (isCons || crop) {
+        const mob = String(b.customerMobile || b.mobile || '').replace(/\D/g, '').slice(-10);
+        const name = String(b.customerName || b.name || '').trim();
+        const key = mob || name;
+        if (key && !customerMap.has(key)) {
+          customerMap.set(key, {
+            id: 'CC_' + (mob || Date.now()),
+            name: name || 'कन्सल्टन्सी शेतकरी',
+            mobile: mob,
+            crop: crop || 'द्राक्ष (Grapes)',
+            address: b.customerAddress || b.address || '',
+            status: 'Active',
+            areaAcres: '1',
+            startDate: b.billDate || '',
+            notes: 'बिलावरून नोंदणीकृत',
+            createdAt: b.createdAt || '',
+            updatedAt: ''
+          });
+        }
+      }
+    });
+  } catch {}
+
+  // 3. Merge with local storage
+  const local = readStorage(STORAGE_KEYS.CONSULTANCY_CUSTOMERS, []);
+  if (Array.isArray(local)) {
+    local.forEach((c) => {
+      const key = String(c.mobile || c.name || '').replace(/\D/g, '').slice(-10) || c.name;
+      if (key && !customerMap.has(key)) {
+        customerMap.set(key, c);
+      }
+    });
+  }
+
+  // 4. Seed default demonstration consultancy customers if still empty
+  if (customerMap.size === 0) {
+    const defaultConsultancy = [
+      { id: 'CC_8459568940', name: 'रमेश सखाराम पाटील', mobile: '8459568940', crop: 'द्राक्ष (Grapes)', address: 'मु. पो. कानमंडाळे, चांदवड', status: 'Active', areaAcres: '3.5', startDate: '2026-01-10', notes: 'गोडी छाटणी नियोजन पूर्ण' },
+      { id: 'CC_9822334455', name: 'विठ्ठल किसन शिंदे', mobile: '9822334455', crop: 'टोमॅटो (Tomato)', address: 'मु. पो. वडबारे, चांदवड', status: 'Active', areaAcres: '2', startDate: '2026-02-01', notes: 'अर्ली ब्लाइट प्रतिबंधक स्प्रे' },
+      { id: 'CC_9423556677', name: 'समाधान उत्तम बोरसे', mobile: '9423556677', crop: 'डाळिंब (Pomegranate)', address: 'मु. पो. उमराणे, देवळा', status: 'Active', areaAcres: '4', startDate: '2026-01-20', notes: 'तेल्या प्रतिबंधक नियोजन' },
+      { id: 'CC_9977881122', name: 'ज्ञानेश्वर बापू ठाकरे', mobile: '9977881122', crop: 'कलिंगड (Watermelon)', address: 'मु. पो. शिरसाणे, चांदवड', status: 'Active', areaAcres: '1.5', startDate: '2026-02-15', notes: 'ठिबक विद्राव्य खत शेड्यूल' }
+    ];
+    defaultConsultancy.forEach(c => customerMap.set(c.mobile, c));
+    writeStorage(STORAGE_KEYS.CONSULTANCY_CUSTOMERS, defaultConsultancy);
+  }
+
+  return Array.from(customerMap.values());
+}
+
+// ─── Save / Update a Consultancy Customer ─────────────────────────────────────
+export async function saveConsultancyCustomer(customerData) {
+  const config = getGoogleSheetsConfig();
+  const mobile = String(customerData.mobile || '').replace(/\D/g, '').slice(-10);
+  const cId = customerData.id || ('CC_' + (mobile || Date.now()));
+
+  const payload = {
+    action: 'saveConsultancyCustomer',
+    data: {
+      ID: cId,
+      Customer_Name: customerData.name || customerData.customerName || '',
+      Mobile: mobile,
+      Crop: customerData.crop || 'इतर',
+      Address: customerData.address || '',
+      Status: customerData.status || 'Active',
+      Area_Acres: String(customerData.areaAcres || '1'),
+      Start_Date: customerData.startDate || new Date().toISOString().split('T')[0],
+      Notes: customerData.notes || ''
+    }
+  };
+
+  // Update local storage
+  const local = readStorage(STORAGE_KEYS.CONSULTANCY_CUSTOMERS, []);
+  const updatedLocal = local.some(c => c.id === cId || (mobile && c.mobile === mobile))
+    ? local.map(c => (c.id === cId || (mobile && c.mobile === mobile)) ? { ...c, ...customerData, id: cId, mobile } : c)
+    : [...local, { ...customerData, id: cId, mobile }];
+  writeStorage(STORAGE_KEYS.CONSULTANCY_CUSTOMERS, updatedLocal);
+
+  if (config.webAppUrl) {
+    await fetch(config.webAppUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    });
+  }
+
+  return { success: true, id: cId, mobile };
+}
+
+// ─── Fetch All Shop Customers (Aggregated from Bills & Customers Sheet) ───────
+export async function fetchAllShopCustomers(forceRefresh = false) {
+  const customerMap = new Map();
+
+  function getCleanField(row, ...keys) {
+    if (!row || typeof row !== 'object') return '';
+    for (const k of keys) {
+      if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== '') {
+        return String(row[k]).trim();
+      }
+    }
+    const normKeys = keys.map(k => k.toLowerCase().replace(/[\s_-]+/g, ''));
+    for (const actualKey of Object.keys(row)) {
+      const normActual = actualKey.toLowerCase().replace(/[\s_-]+/g, '');
+      if (normKeys.includes(normActual)) {
+        if (row[actualKey] !== undefined && row[actualKey] !== null && String(row[actualKey]).trim() !== '') {
+          return String(row[actualKey]).trim();
+        }
+      }
+    }
+    return '';
+  }
+
+  function findCustomerName(row) {
+    if (!row || typeof row !== 'object') return '';
+    const explicit = getCleanField(
+      row,
+      'Customer_Name', 'Customer Name', 'customerName', 'customer_name',
+      'Name', 'name', 'Customer', 'customer',
+      'Farmer_Name', 'Farmer Name', 'farmerName', 'Farmer', 'farmer',
+      'Full_Name', 'Full Name', 'fullName',
+      'Party_Name', 'Party Name', 'partyName',
+      'Client_Name', 'Client Name',
+      'ग्राहक नाव', 'ग्राहकाचे नाव', 'नाव', 'शेतकरी नाव', 'ग्राहक'
+    );
+    if (explicit && explicit !== 'शेतकरी' && explicit !== 'ग्राहक') return explicit;
+
+    for (const [key, val] of Object.entries(row)) {
+      if (typeof val === 'string') {
+        const trimmed = val.trim();
+        if (
+          trimmed.length >= 3 &&
+          trimmed.length <= 60 &&
+          !/^[0-9\s\+\-\(\)]+$/.test(trimmed) &&
+          !/^[0-9]{4}-[0-9]{2}-[0-9]{2}/.test(trimmed) &&
+          !/^https?:\/\//i.test(trimmed) &&
+          !/^(true|false|active|inactive)$/i.test(trimmed)
+        ) {
+          const normKey = key.toLowerCase().replace(/[\s_-]+/g, '');
+          if (!['address', 'village', 'notes', 'id', 'date', 'lastvisit', 'items', 'status', 'mode'].includes(normKey)) {
+            return trimmed;
+          }
+        }
+      }
+    }
+    return explicit || 'शेतकरी';
+  }
+
+  function findCustomerMobile(row) {
+    if (!row || typeof row !== 'object') return '';
+    const explicit = getCleanField(
+      row,
+      'Mobile', 'mobile', 'Customer_Mobile', 'Customer Mobile', 'customerMobile', 'customer_mobile',
+      'Phone', 'phone', 'Phone_No', 'Phone No', 'Phone_Number', 'phone_number',
+      'Contact', 'contact', 'Contact_No', 'Contact No',
+      'Mobile_No', 'Mobile No', 'Mobile_Number', 'Mobile Number', 'mobilenumber',
+      'Mob', 'mob', 'Cell', 'cell',
+      'मोबाईल', 'मोबाईल नंबर', 'फोन', 'संपर्क'
+    );
+    const cleanMob = explicit.replace(/\D/g, '').slice(-10);
+    if (cleanMob.length >= 10) return cleanMob;
+
+    for (const [key, val] of Object.entries(row)) {
+      if (val !== undefined && val !== null) {
+        const digits = String(val).replace(/\D/g, '').slice(-10);
+        if (digits.length === 10 && /^[6-9]/.test(digits)) {
+          return digits;
+        }
+      }
+    }
+    return cleanMob || '';
+  }
+
+  // 1. Pre-seed with known default customers so UI is never empty
+  DEFAULT_SHOP_CUSTOMERS.forEach((c) => {
+    customerMap.set(c.mobile, { ...c });
+  });
+
+  // 2. Read local cached customers
+  const localCustMap = readStorage(STORAGE_KEYS.CUSTOMERS, {});
+  Object.values(localCustMap || {}).forEach((c) => {
+    const mob = String(c.mobile || '').replace(/\D/g, '').slice(-10);
+    const name = c.name || c.customerName || '';
+    const key = mob || (name ? ('NAME_' + name.toLowerCase().trim()) : null);
+    if (!key) return;
+    if (!customerMap.has(key)) {
+      customerMap.set(key, {
+        mobile: mob,
+        name: name || 'ग्राहक',
+        address: c.address || c.customerAddress || '',
+        totalBills: Number(c.totalBills || 1),
+        totalPurchased: Number(c.totalPurchased || 0),
+        totalPaid: Number(c.totalPaid || 0),
+        balanceUdhaari: Number(c.balance || c.balanceUdhaari || 0),
+        lastVisit: c.lastVisit || '',
+        bills: []
+      });
+    }
+  });
+
+  // 3. Concurrently fetch both Customers sheet and Bills sheet from remote
+  try {
+    const [sheetCust, rawBills] = await Promise.all([
+      fetchGoogleSheetRecords('Customers', forceRefresh).catch(() => []),
+      fetchGoogleSheetRecords('Bills', forceRefresh).catch(() => [])
+    ]);
+
+    // Process Google Sheets Customers tab first
+    if (Array.isArray(sheetCust) && sheetCust.length > 0) {
+      sheetCust.forEach((c) => {
+        const rawMobile = findCustomerMobile(c);
+        const name = findCustomerName(c);
+        const address = getCleanField(c, 'Address', 'address', 'Customer_Address', 'Customer Address', 'Village', 'गाव', 'Place', 'City', 'पत्ता');
+        const totalBills = Number(getCleanField(c, 'Total_Bills', 'Total Bills', 'totalBills', 'Bills', 'Count') || 0);
+        const totalPurchased = Number(getCleanField(c, 'Total_Purchased', 'Total Purchased', 'totalPurchased', 'Total_Amount', 'Amount') || 0);
+        const totalPaid = Number(getCleanField(c, 'Total_Paid', 'Total Paid', 'totalPaid', 'Paid_Amount', 'Paid') || 0);
+        const balanceUdhaari = Number(getCleanField(c, 'Balance_Udhaari', 'Balance Udhaari', 'balanceUdhaari', 'Balance', 'Udhaari', 'Udhari', 'Due_Amount') || (totalPurchased - totalPaid) || 0);
+        const lastVisit = getCleanField(c, 'Last_Visit', 'Last Visit', 'lastVisit', 'Date', 'date', 'Last_Date');
+
+        const customerKey = rawMobile || (name && name !== 'शेतकरी' ? ('NAME_' + name.toLowerCase().trim()) : null);
+        if (!customerKey) return;
+
+        const existing = customerMap.get(customerKey) || (rawMobile ? customerMap.get(rawMobile) : null) || {
+          mobile: rawMobile,
+          name: name,
+          address: address,
+          totalBills: totalBills || 1,
+          totalPurchased: totalPurchased,
+          totalPaid: totalPaid,
+          balanceUdhaari: balanceUdhaari,
+          lastVisit: lastVisit,
+          bills: []
+        };
+
+        if (name && (!existing.name || existing.name === 'शेतकरी' || existing.name === 'ग्राहक')) existing.name = name;
+        if (address && !existing.address) existing.address = address;
+        if (rawMobile && !existing.mobile) existing.mobile = rawMobile;
+        if (totalBills) existing.totalBills = Math.max(existing.totalBills, totalBills);
+        if (totalPurchased) existing.totalPurchased = Math.max(existing.totalPurchased, totalPurchased);
+        if (totalPaid) existing.totalPaid = Math.max(existing.totalPaid, totalPaid);
+        if (balanceUdhaari !== undefined) existing.balanceUdhaari = balanceUdhaari;
+        if (lastVisit && (!existing.lastVisit || String(lastVisit) > String(existing.lastVisit))) {
+          existing.lastVisit = lastVisit;
+        }
+
+        customerMap.set(customerKey, existing);
+        if (rawMobile && customerKey !== rawMobile) customerMap.set(rawMobile, existing);
+      });
+    }
+
+    // Process Bills to supplement
+    const remoteBills = Array.isArray(rawBills) ? rawBills.map(normalizeBillRow) : [];
+    const localBills = (readStorage(STORAGE_KEYS.BILLS, []) || []).map(normalizeBillRow);
+    const allBills = [...remoteBills, ...localBills];
+
+    allBills.forEach((bill) => {
+      const rawMobile = findCustomerMobile(bill);
+      const name = findCustomerName(bill);
+      const address = getCleanField(bill, 'customerAddress', 'Customer_Address', 'Customer Address', 'Address', 'address', 'Village', 'गाव', 'City', 'पत्ता');
+
+      const customerKey = rawMobile || (name && name !== 'शेतकरी' && name !== 'ग्राहक' ? ('NAME_' + name.toLowerCase().trim()) : null);
+      if (!customerKey) return;
+
+      const total = Number(bill.totalAmount || bill.Total_Amount || 0);
+      const paid = Number(bill.paidAmount || bill.Paid_Amount || 0);
+      const balance = Number(bill.balanceAmount || bill.Balance_Amount || (total - paid) || 0);
+      const date = bill.billDate || bill.Date || '';
+
+      const existing = customerMap.get(customerKey) || (rawMobile ? customerMap.get(rawMobile) : null) || {
+        mobile: rawMobile,
+        name: name,
+        address: address,
+        totalBills: 0,
+        totalPurchased: 0,
+        totalPaid: 0,
+        balanceUdhaari: 0,
+        lastVisit: date,
+        bills: []
+      };
+
+      if (!existing.bills.some(b => b.billNo === bill.billNo || (b.id && b.id === bill.id))) {
+        existing.bills.push(bill);
+      }
+      if (date && (!existing.lastVisit || String(date) > String(existing.lastVisit))) {
+        existing.lastVisit = date;
+      }
+      if (name && (!existing.name || existing.name === 'शेतकरी' || existing.name === 'ग्राहक')) existing.name = name;
+      if (address && !existing.address) existing.address = address;
+      if (rawMobile && !existing.mobile) existing.mobile = rawMobile;
+
+      customerMap.set(customerKey, existing);
+      if (rawMobile && customerKey !== rawMobile) customerMap.set(rawMobile, existing);
+    });
+  } catch (err) {
+    console.warn('fetchAllShopCustomers remote sync error:', err);
+  }
+
+  const list = Array.from(new Set(customerMap.values())).sort((a, b) =>
+    String(b.lastVisit || '').localeCompare(String(a.lastVisit || ''))
+  );
+
+  // Cache back to local storage
+  if (list.length > 0) {
+    const mapToSave = {};
+    list.forEach(c => { if (c.mobile) mapToSave[c.mobile] = c; });
+    writeStorage(STORAGE_KEYS.CUSTOMERS, mapToSave);
+  }
+
+  return list;
+}
+
+// ─── Sync Customers With Google Sheet ─────────────────────────────────────────
+export async function syncCustomersWithSheet() {
+  const config = getGoogleSheetsConfig();
+  if (!config.webAppUrl) return { success: false, error: 'Web App URL जोडलेली नाही' };
+
+  try {
+    const res = await fetch(`${config.webAppUrl}${config.webAppUrl.includes('?') ? '&' : '?'}action=syncCustomers`, {
+      method: 'GET',
+      mode: 'cors',
+      cache: 'no-store'
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return data;
+    }
+  } catch (err) {
+    console.warn('syncCustomersWithSheet error:', err);
+  }
+  return { success: false };
+}
+
+// ─── Fetch All Bills (for Customer Analysis & Product Tracing) ─────────────────
+export async function fetchAllBills(forceRefresh = false) {
+  let bills = [];
+  try {
+    const remote = await fetchGoogleSheetRecords('Bills', forceRefresh);
+    if (Array.isArray(remote) && remote.length > 0) {
+      bills = remote.map((b) => normalizeBillRow(b));
+    }
+  } catch (err) {
+    console.warn('fetchAllBills sheet fetch fallback:', err.message);
+  }
+
+  if (bills.length === 0) {
+    const local = readStorage(STORAGE_KEYS.BILLS, []);
+    bills = local.map((b) => normalizeBillRow(b));
+  }
+  return bills;
+}
+
+// Re-export getSettingValue for convenience
+export { getSettingValue } from './shopService';
 
 // Return raw Google Apps Script template for the Admin UI copy button
 export function getScriptTemplateCode() {

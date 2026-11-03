@@ -97,6 +97,7 @@ export default function AppShell({ children }) {
   const roleLinks = isAdmin
     ? [
         ['/admin/dashboard', 'डॅशबोर्ड'],
+        ['/admin/customers', 'माझे ग्राहक'],
         ['/admin/billing', 'नवीन बिल'],
         ['/admin/bills', 'बिल इतिहास'],
         ['/admin/challans', 'चालन इतिहास'],
@@ -106,6 +107,7 @@ export default function AppShell({ children }) {
       ]
     : isStaff
       ? [
+          ['/admin/customers', 'माझे ग्राहक'],
           ['/admin/billing', 'नवीन बिल'],
           ['/admin/bills', 'बिल इतिहास'],
           ['/admin/challans', 'चालन इतिहास'],

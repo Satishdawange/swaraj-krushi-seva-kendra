@@ -5,12 +5,16 @@ import {
   saveGoogleSheetsConfig,
   testGoogleSheetsConnection,
   exportAllToGoogleSheet,
+  syncCustomersWithSheet,
   getScriptTemplateCode,
   fetchAllSheetSettings,
   saveSheetSetting,
   fetchAllSheetCategories,
-  saveSheetCategory
+  saveSheetCategory,
+  fetchAllServices,
+  saveServiceItem
 } from '../service/googleSheetsService';
+import { DEFAULT_SERVICE_IMAGE } from '../data/consultancyServices';
 import '../CSS/billing.css';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -43,6 +47,7 @@ const SUGGESTED_KEYS = [
   { key: 'show_product_request',  desc: 'उत्पादन मागणी फॉर्म दाखवायचे का (true/false)', example: 'true' },
   { key: 'bill_gst_percent',      desc: 'GST टक्केवारी (0 = नाही)',                  example: '0' },
   { key: 'low_stock_alert_qty',   desc: 'कमी साठा इशारा पातळी',                     example: '5' },
+  { key: 'show_consultancy_services', desc: 'कन्सल्टन्सी सेवा पोर्टलवर दाखवायचे का (true/false)', example: 'true' },
 ];
 
 // ─── PropertiesTab sub-component ─────────────────────────────────────────────
@@ -780,12 +785,632 @@ function CategoriesTab() {
   );
 }
 
+
+// ─── ServicesTab sub-component ───────────────────────────────────────────────
+function ServicesTab() {
+  const [services, setServices] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState(null);
+  const [portalConsultancyEnabled, setPortalConsultancyEnabled] = useState(true);
+  const [savingToggle, setSavingToggle] = useState(false);
+
+  const [formData, setFormData] = useState({
+    id: '',
+    nameMr: '',
+    nameEn: '',
+    crop: '',
+    cardImageUrl: '',
+    slideshowImages: '',
+    descriptionMr: '',
+    descriptionEn: '',
+    keyBenefitsMr: '',
+    farmerFeedback: '',
+    isActive: true,
+    showOnPortal: true,
+    sortOrder: 1
+  });
+  const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState('');
+  const [saveError, setSaveError] = useState('');
+
+  const loadData = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const data = await fetchAllServices();
+      setServices(data);
+
+      // Check setting
+      try {
+        const cache = JSON.parse(localStorage.getItem('sksk_sheet_settings_cache') || '[]');
+        const found = cache.find(s => s.key === 'show_consultancy_services');
+        if (found) {
+          setPortalConsultancyEnabled(found.value !== 'false');
+        }
+      } catch {}
+    } catch (err) {
+      setError(err.message || 'सेवा लोड करताना त्रुटी आली.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const handleTogglePortalVisibility = async () => {
+    const nextVal = !portalConsultancyEnabled;
+    setSavingToggle(true);
+    try {
+      await saveSheetSetting('show_consultancy_services', String(nextVal));
+      setPortalConsultancyEnabled(nextVal);
+      triggerSavePopup({
+        title: nextVal ? 'कन्सल्टन्सी सेवा चालू केली! ✓' : 'कन्सल्टन्सी सेवा लपवली! ✓',
+        message: nextVal ? 'पोर्टलवर सेवा पेजवर कन्सल्टन्सी कार्ड्स दिसतील.' : 'पोर्टलवर कन्सल्टन्सी कार्ड्स तात्पुरते लपवले आहेत.'
+      });
+    } catch (err) {
+      alert('सेटिंग बदलताना त्रुटी: ' + err.message);
+    } finally {
+      setSavingToggle(false);
+    }
+  };
+
+  const handleOpenAddModal = () => {
+    const nextOrder = services.length > 0 
+      ? Math.max(...services.map(s => Number(s.sortOrder) || 0)) + 1 
+      : 1;
+    setEditingItem(null);
+    setFormData({
+      id: 'serv_' + Date.now().toString().slice(-6),
+      nameMr: '',
+      nameEn: '',
+      crop: '',
+      cardImageUrl: '',
+      slideshowImages: '',
+      descriptionMr: '',
+      descriptionEn: '',
+      keyBenefitsMr: '',
+      farmerFeedback: '',
+      isActive: true,
+      showOnPortal: true,
+      sortOrder: nextOrder
+    });
+    setSaveSuccess('');
+    setSaveError('');
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEditModal = (serv) => {
+    setEditingItem(serv);
+    setFormData({
+      id: serv.id || '',
+      nameMr: serv.nameMr || '',
+      nameEn: serv.nameEn || '',
+      crop: serv.crop || '',
+      cardImageUrl: serv.cardImageUrl || '',
+      slideshowImages: serv.slideshowImages || '',
+      descriptionMr: serv.descriptionMr || '',
+      descriptionEn: serv.descriptionEn || '',
+      keyBenefitsMr: serv.keyBenefitsMr || '',
+      farmerFeedback: serv.farmerFeedback || '',
+      isActive: serv.isActive !== false,
+      showOnPortal: serv.showOnPortal !== false,
+      sortOrder: serv.sortOrder ?? 1
+    });
+    setSaveSuccess('');
+    setSaveError('');
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setEditingItem(null);
+  };
+
+  const handleSaveService = async (e) => {
+    e.preventDefault();
+    if (!formData.nameMr.trim()) {
+      setSaveError('कृपया सेवेचे मराठी नाव प्रविष्ट करा.');
+      return;
+    }
+    setSaving(true);
+    setSaveError('');
+    setSaveSuccess('');
+    try {
+      await saveServiceItem(formData);
+      setSaveSuccess(editingItem ? 'सेवा माहिती यशस्वीरीत्या अद्ययावत केली!' : 'नवीन सेवा यशस्वीरीत्या जोडली!');
+      triggerSavePopup({
+        title: editingItem ? 'सेवा अपडेट झाली! ✓' : 'नवीन सेवा जोडली! 🎉',
+        message: `"${formData.nameMr}" सेवा Google Sheet व पोर्टलवर सेव्ह झाली.`,
+        details: [
+          { label: 'सेवा नाव', value: formData.nameMr },
+          { label: 'पीक', value: formData.crop || '—' },
+          { label: 'पोर्टल स्थिती', value: formData.showOnPortal ? 'दाखवा (Visible)' : 'लपवा (Hidden)' }
+        ]
+      });
+
+      // Update local state immediately
+      setServices(prev => {
+        const exists = prev.some(s => s.id === formData.id);
+        if (exists) {
+          return prev.map(s => s.id === formData.id ? { ...s, ...formData } : s);
+        } else {
+          return [...prev, { ...formData }];
+        }
+      });
+
+      setTimeout(() => {
+        setIsModalOpen(false);
+        setEditingItem(null);
+        setSaveSuccess('');
+      }, 900);
+    } catch (err) {
+      setSaveError(err.message || 'सेवा सेव्ह करताना त्रुटी आली.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const filteredServices = services.filter(s => {
+    const q = search.toLowerCase();
+    return (
+      (s.nameMr && s.nameMr.toLowerCase().includes(q)) ||
+      (s.nameEn && s.nameEn.toLowerCase().includes(q)) ||
+      (s.crop && s.crop.toLowerCase().includes(q)) ||
+      (s.id && s.id.toLowerCase().includes(q))
+    );
+  });
+
+  return (
+    <div>
+      {/* Top Banner & Actions */}
+      <div style={{
+        display: 'flex', flexWrap: 'wrap',
+        alignItems: 'center', justifyContent: 'space-between',
+        gap: '12px', marginBottom: '20px'
+      }}>
+        <div>
+          <h2 style={{ margin: '0 0 4px', fontSize: '18px', color: '#176b3a', fontWeight: '800' }}>
+            🛠️ कृषी सेवा व कन्सल्टन्सी व्यवस्थापन (Services Sheet)
+          </h2>
+          <p style={{ margin: 0, fontSize: '12.5px', color: '#65776d' }}>
+            द्राक्ष, टोमॅटो, डाळिंब, कलिंगड व इतर पीक कन्सल्टन्सी सेवा, फोटो लिंक्स, स्लाईडशो आणि यशोगाथा नियंत्रित करा.
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Main Portal Toggle */}
+          <button
+            onClick={handleTogglePortalVisibility}
+            disabled={savingToggle}
+            style={{
+              padding: '8px 14px', borderRadius: '8px',
+              border: portalConsultancyEnabled ? '1.5px solid #22a35a' : '1.5px solid #cbd5e0',
+              background: portalConsultancyEnabled ? '#eaf6ee' : '#f8faf9',
+              color: portalConsultancyEnabled ? '#135c2d' : '#64748b',
+              fontSize: '12.5px', fontWeight: '700', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: '6px'
+            }}
+            title="पोर्टलवर कन्सल्टन्सी सेवा विभाग दाखवायचा की नाही"
+          >
+            <span>{portalConsultancyEnabled ? '🟢' : '⚪'}</span>
+            पोर्टलवर सेवा दाखवा: {portalConsultancyEnabled ? 'चालू (Visible)' : 'बंद (Hidden)'}
+          </button>
+
+          <button
+            onClick={loadData}
+            disabled={loading}
+            style={{
+              padding: '8px 14px', borderRadius: '8px',
+              border: '1px solid #dce8de', background: '#f8faf9',
+              fontSize: '12.5px', fontWeight: '700', color: '#2d3748',
+              cursor: loading ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {loading ? '⏳ लोड होत आहे...' : '🔄 रिफ्रेश'}
+          </button>
+
+          <button
+            onClick={handleOpenAddModal}
+            style={{
+              padding: '8px 16px', borderRadius: '8px',
+              border: 'none', background: '#176b3a',
+              fontSize: '12.5px', fontWeight: '700', color: '#ffffff',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+              boxShadow: '0 2px 6px rgba(23,107,58,0.2)'
+            }}
+          >
+            <span>➕</span> नवीन सेवा जोडा
+          </button>
+        </div>
+      </div>
+
+      {/* Filter / Search Bar */}
+      <div style={{ marginBottom: '16px' }}>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="🔍 सेवा किंवा पीक शोधा (उदा. द्राक्ष, Tomato, डाळिंब)..."
+          style={{
+            width: '100%', maxWidth: '360px',
+            padding: '9px 14px', borderRadius: '8px',
+            border: '1px solid #dce8de', fontSize: '13px',
+            outline: 'none', background: '#fafcfa'
+          }}
+        />
+      </div>
+
+      {error && (
+        <div style={{
+          padding: '12px 16px', borderRadius: '8px',
+          background: '#fde8e8', color: '#c81e1e',
+          fontSize: '13px', marginBottom: '16px'
+        }}>
+          ⚠️ {error}
+        </div>
+      )}
+
+      {/* Services Table */}
+      <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '10px' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+          <thead>
+            <tr style={{ background: '#f1f5f2', borderBottom: '2px solid #dce8de', color: '#2d3748' }}>
+              <th style={{ padding: '12px 14px', fontWeight: '700' }}>फोटो</th>
+              <th style={{ padding: '12px 14px', fontWeight: '700' }}>सेवेचे नाव (मराठी / English)</th>
+              <th style={{ padding: '12px 14px', fontWeight: '700' }}>पीक (Crop)</th>
+              <th style={{ padding: '12px 14px', fontWeight: '700', textAlign: 'center' }}>स्लाईडशो</th>
+              <th style={{ padding: '12px 14px', fontWeight: '700', textAlign: 'center' }}>पोर्टलवर</th>
+              <th style={{ padding: '12px 14px', fontWeight: '700', textAlign: 'center' }}>स्थिती</th>
+              <th style={{ padding: '12px 14px', fontWeight: '700', textAlign: 'center' }}>क्रम</th>
+              <th style={{ padding: '12px 14px', fontWeight: '700', textAlign: 'center' }}>क्रिया</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading && services.length === 0 ? (
+              <tr>
+                <td colSpan="8" style={{ padding: '32px', textAlign: 'center', color: '#718096' }}>
+                  ⏳ Google Sheet मधून सेवा लोड होत आहेत...
+                </td>
+              </tr>
+            ) : filteredServices.length === 0 ? (
+              <tr>
+                <td colSpan="8" style={{ padding: '32px', textAlign: 'center', color: '#718096' }}>
+                  कोणतीही सेवा आढळली नाही.
+                </td>
+              </tr>
+            ) : (
+              filteredServices.map((serv, idx) => {
+                const slideCount = serv.slideshowImages ? serv.slideshowImages.split(',').filter(Boolean).length : 0;
+                return (
+                  <tr
+                    key={serv.id || idx}
+                    style={{
+                      borderBottom: '1px solid #edf2f7',
+                      background: idx % 2 === 0 ? '#ffffff' : '#fafbfa'
+                    }}
+                  >
+                    <td style={{ padding: '10px 14px' }}>
+                      <img
+                        src={serv.cardImageUrl || DEFAULT_SERVICE_IMAGE}
+                        alt=""
+                        onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = DEFAULT_SERVICE_IMAGE; }}
+                        style={{ width: '45px', height: '36px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #e2e8f0' }}
+                      />
+                    </td>
+                    <td style={{ padding: '10px 14px' }}>
+                      <strong style={{ color: '#176b3a', display: 'block', fontSize: '13.5px' }}>{serv.nameMr}</strong>
+                      <span style={{ fontSize: '11.5px', color: '#65776d' }}>{serv.nameEn || '—'}</span>
+                    </td>
+                    <td style={{ padding: '10px 14px', fontWeight: '600', color: '#2d3748' }}>
+                      {serv.crop || '—'}
+                    </td>
+                    <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                      <span style={{
+                        padding: '2px 8px', borderRadius: '10px',
+                        background: slideCount > 0 ? '#e0f2fe' : '#f1f5f9',
+                        color: slideCount > 0 ? '#0284c7' : '#94a3b8',
+                        fontSize: '11.5px', fontWeight: '700'
+                      }}>
+                        🖼️ {slideCount} फोटो
+                      </span>
+                    </td>
+                    <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                      <span style={{
+                        padding: '3px 8px', borderRadius: '12px',
+                        fontSize: '11px', fontWeight: '700',
+                        background: serv.showOnPortal !== false ? '#def7ec' : '#fde8e8',
+                        color: serv.showOnPortal !== false ? '#03543f' : '#9b1c1c'
+                      }}>
+                        {serv.showOnPortal !== false ? 'दाखवा' : 'लपवा'}
+                      </span>
+                    </td>
+                    <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                      <span style={{
+                        padding: '3px 8px', borderRadius: '12px',
+                        fontSize: '11px', fontWeight: '700',
+                        background: serv.isActive !== false ? '#def7ec' : '#fde8e8',
+                        color: serv.isActive !== false ? '#03543f' : '#9b1c1c'
+                      }}>
+                        {serv.isActive !== false ? 'सक्रिय' : 'बंद'}
+                      </span>
+                    </td>
+                    <td style={{ padding: '10px 14px', textAlign: 'center', fontWeight: '600' }}>
+                      {serv.sortOrder ?? '—'}
+                    </td>
+                    <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                      <button
+                        onClick={() => handleOpenEditModal(serv)}
+                        style={{
+                          padding: '5px 12px', borderRadius: '6px',
+                          border: '1px solid #cbd5e0', background: '#ffffff',
+                          fontSize: '12px', fontWeight: '600', color: '#2b6cb0',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ✏️ संपादन
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Add / Edit Service Modal */}
+      {isModalOpen && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 9999, padding: '16px'
+        }}>
+          <div style={{
+            background: '#ffffff', borderRadius: '14px',
+            width: '100%', maxWidth: '640px', maxHeight: '90vh',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)',
+            overflow: 'hidden', display: 'flex', flexDirection: 'column'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '16px 20px',
+              background: '#176b3a', color: '#ffffff',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+            }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '700' }}>
+                {editingItem ? '✏️ सेवा संपादन करा' : '➕ नवीन सेवा जोडा'}
+              </h3>
+              <button
+                onClick={handleCloseModal}
+                disabled={saving}
+                style={{
+                  background: 'transparent', border: 'none',
+                  color: '#ffffff', fontSize: '20px', cursor: 'pointer', lineHeight: 1
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleSaveService} style={{ padding: '20px', overflowY: 'auto' }}>
+              {saveSuccess && (
+                <div style={{
+                  padding: '10px 14px', borderRadius: '8px',
+                  background: '#def7ec', color: '#03543f',
+                  fontSize: '13px', marginBottom: '14px', fontWeight: '600'
+                }}>
+                  ✅ {saveSuccess}
+                </div>
+              )}
+              {saveError && (
+                <div style={{
+                  padding: '10px 14px', borderRadius: '8px',
+                  background: '#fde8e8', color: '#9b1c1c',
+                  fontSize: '13px', marginBottom: '14px'
+                }}>
+                  ⚠️ {saveError}
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: '700', color: '#4a5568', marginBottom: '4px' }}>
+                    मराठी नाव (Service Name MR) *:
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.nameMr}
+                    onChange={(e) => setFormData({ ...formData, nameMr: e.target.value })}
+                    required
+                    placeholder="उदा. द्राक्ष पीक सल्ला व कन्सल्टन्सी"
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e0', fontSize: '13px', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: '700', color: '#4a5568', marginBottom: '4px' }}>
+                    इंग्रजी नाव (Service Name EN):
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.nameEn}
+                    onChange={(e) => setFormData({ ...formData, nameEn: e.target.value })}
+                    placeholder="उदा. Grapes Crop Consultancy"
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e0', fontSize: '13px', boxSizing: 'border-box' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: '700', color: '#4a5568', marginBottom: '4px' }}>
+                    पीक नाव (Crop Name):
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.crop}
+                    onChange={(e) => setFormData({ ...formData, crop: e.target.value })}
+                    placeholder="उदा. द्राक्ष, टोमॅटो, डाळिंब, कलिंगड"
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e0', fontSize: '13px', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: '700', color: '#4a5568', marginBottom: '4px' }}>
+                    क्रम (Sort Order):
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.sortOrder}
+                    onChange={(e) => setFormData({ ...formData, sortOrder: Number(e.target.value) || 0 })}
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e0', fontSize: '13px', boxSizing: 'border-box' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '12.5px', fontWeight: '700', color: '#4a5568', marginBottom: '4px' }}>
+                  कार्ड फोटो लिंक (Card Image URL - Web Link):
+                </label>
+                <input
+                  type="url"
+                  value={formData.cardImageUrl}
+                  onChange={(e) => setFormData({ ...formData, cardImageUrl: e.target.value })}
+                  placeholder="https://images.unsplash.com/photo-..."
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e0', fontSize: '13px', boxSizing: 'border-box' }}
+                />
+                <span style={{ fontSize: '11px', color: '#718096' }}>
+                  वेबसाईटवरील फोटो लिंक टाका. रिकामे असल्यास किंवा फोटो न दिसल्यास आपोआप डीफॉल्ट फोटो दिसेल.
+                </span>
+              </div>
+
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '12.5px', fontWeight: '700', color: '#4a5568', marginBottom: '4px' }}>
+                  स्लाईडशो फोटो लिंक्स (Slideshow Image URLs - Comma Separated):
+                </label>
+                <textarea
+                  rows={2}
+                  value={formData.slideshowImages}
+                  onChange={(e) => setFormData({ ...formData, slideshowImages: e.target.value })}
+                  placeholder="उदा. https://image1.jpg, https://image2.jpg, https://image3.jpg"
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e0', fontSize: '12px', boxSizing: 'border-box' }}
+                />
+                <span style={{ fontSize: '11px', color: '#718096' }}>
+                  कन्सल्टन्सी माहिती पॉपअपमध्ये स्लाईडशो दाखवण्यासाठी २ किंवा अधिक फोटो लिंक्स स्वल्पविरामाने (comma) वेगळ्या करा.
+                </span>
+              </div>
+
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '12.5px', fontWeight: '700', color: '#4a5568', marginBottom: '4px' }}>
+                  सविस्तर माहिती / सल्ला (Detailed Description MR):
+                </label>
+                <textarea
+                  rows={3}
+                  value={formData.descriptionMr}
+                  onChange={(e) => setFormData({ ...formData, descriptionMr: e.target.value })}
+                  placeholder="लागवडीपासून काढणीपर्यंत संपूर्ण तांत्रिक मार्गदर्शन, खत व फवारणी वेळापत्रक..."
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e0', fontSize: '12.5px', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '12.5px', fontWeight: '700', color: '#4a5568', marginBottom: '4px' }}>
+                  मुख्य फायदे व वैशिष्ट्ये (Key Benefits MR - दर ओळीला एक मुद्दा):
+                </label>
+                <textarea
+                  rows={2}
+                  value={formData.keyBenefitsMr}
+                  onChange={(e) => setFormData({ ...formData, keyBenefitsMr: e.target.value })}
+                  placeholder="• कीड व रोगाचे आगाऊ नियंत्रण&#10;• अधिक उत्पादन व योग्य आकार&#10;• कमी खर्चात जास्तीत जास्त नफा"
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e0', fontSize: '12.5px', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '12.5px', fontWeight: '700', color: '#4a5568', marginBottom: '4px' }}>
+                  शेतकऱ्यांचा अनुभव / यशोगाथा (Farmer Success Story & Feedback):
+                </label>
+                <textarea
+                  rows={2}
+                  value={formData.farmerFeedback}
+                  onChange={(e) => setFormData({ ...formData, farmerFeedback: e.target.value })}
+                  placeholder="उदा. 'स्वराज कन्सल्टन्सीमुळे यंदा मला विक्रमी उत्पादन मिळाले!' - शेतकरी नाव, गाव"
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e0', fontSize: '12.5px', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '20px', marginBottom: '20px', padding: '10px 14px', background: '#f8faf9', borderRadius: '8px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '700', color: '#2d3748', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={formData.showOnPortal}
+                    onChange={(e) => setFormData({ ...formData, showOnPortal: e.target.checked })}
+                    style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                  />
+                  वेबसाईट पोर्टलवर दाखवा (Show on Portal)
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '700', color: '#2d3748', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={formData.isActive}
+                    onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+                    style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                  />
+                  सक्रिय आहे (Active)
+                </label>
+              </div>
+
+              {/* Modal Buttons */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={handleCloseModal}
+                  disabled={saving}
+                  style={{
+                    padding: '9px 16px', borderRadius: '8px',
+                    border: '1px solid #cbd5e0', background: '#ffffff',
+                    fontSize: '13px', fontWeight: '600', color: '#4a5568',
+                    cursor: 'pointer'
+                  }}
+                >
+                  रद्द करा
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  style={{
+                    padding: '9px 20px', borderRadius: '8px',
+                    border: 'none', background: '#176b3a',
+                    fontSize: '13px', fontWeight: '700', color: '#ffffff',
+                    cursor: saving ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {saving ? '💾 जतन होत आहे...' : '💾 जतन करा (Save Service)'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function GoogleSheetsIntegration() {
   const [config, setConfig] = useState(getGoogleSheetsConfig());
   const [webAppUrl, setWebAppUrl] = useState(config.webAppUrl || '');
   const [isTesting, setIsTesting] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isSyncingCust, setIsSyncingCust] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [syncResult, setSyncResult] = useState(null);
   const [copyCodeSuccess, setCopyCodeSuccess] = useState(false);
@@ -849,6 +1474,31 @@ export default function GoogleSheetsIntegration() {
     }
   };
 
+  const handleSyncCustomers = async () => {
+    if (!webAppUrl.trim()) {
+      alert('प्रथम Web App URL जोडा.');
+      return;
+    }
+    setIsSyncingCust(true);
+    setSyncResult(null);
+    try {
+      const res = await syncCustomersWithSheet();
+      setSyncResult({
+        success: true,
+        message: res.count !== undefined
+          ? `बिलांवरून ${res.count} ग्राहक शोधून 'Customers' शीटमध्ये यशस्वीरीत्या सिंक झाले!`
+          : 'ग्राहक यशस्वीरीत्या सिंक झाले!'
+      });
+    } catch (err) {
+      setSyncResult({
+        success: false,
+        message: 'ग्राहक सिंक करताना त्रुटी: ' + err.message
+      });
+    } finally {
+      setIsSyncingCust(false);
+    }
+  };
+
   const handleCopyCode = () => {
     navigator.clipboard.writeText(scriptCode);
     setCopyCodeSuccess(true);
@@ -861,6 +1511,7 @@ export default function GoogleSheetsIntegration() {
     { id: 'connection', label: '🔗 जोडणी (Connection)' },
     { id: 'properties', label: '⚙️ Properties (Settings)' },
     { id: 'categories', label: '🏷️ श्रेणी (Categories)' },
+    { id: 'services', label: '🛠️ सेवा व्यवस्थापन (Services)' },
   ];
 
   return (
@@ -1005,6 +1656,19 @@ export default function GoogleSheetsIntegration() {
                 >
                   {isSyncing ? '⏳ सिंक होत आहे...' : '🔄 सर्व डेटा शीटमध्ये सिंक करा'}
                 </button>
+                <button
+                  type="button"
+                  disabled={isSyncingCust}
+                  onClick={handleSyncCustomers}
+                  style={{
+                    background: '#1b6336', color: '#ffffff', border: 'none',
+                    borderRadius: '8px', padding: '11px 18px',
+                    fontSize: '13px', fontWeight: '700',
+                    cursor: isSyncingCust ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {isSyncingCust ? '⏳ ग्राहक सिंक होत आहेत...' : '👥 ग्राहक यादी सिंक करा'}
+                </button>
               </div>
 
               {testResult && (
@@ -1125,6 +1789,17 @@ export default function GoogleSheetsIntegration() {
           boxShadow: '0 2px 10px rgba(0,0,0,0.03)'
         }}>
           <CategoriesTab />
+        </div>
+      )}
+
+      {/* ── Tab: Services ── */}
+      {activeTab === 'services' && (
+        <div style={{
+          background: '#ffffff', borderRadius: '16px',
+          border: '1px solid #dce8de', padding: '24px',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.03)'
+        }}>
+          <ServicesTab />
         </div>
       )}
     </div>

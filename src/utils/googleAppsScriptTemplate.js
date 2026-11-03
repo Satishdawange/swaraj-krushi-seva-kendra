@@ -42,13 +42,53 @@ const TABS = {
   SETTINGS: 'Settings',
   PRODUCTS: 'Products',
   CATEGORIES: 'Categories',
+  SERVICES: 'Services',
+  CONSULTANCY_CUSTOMERS: 'Consultancy_Customers',
   PRODUCT_REQUESTS: 'Product_Requests',
   AUTH_SESSIONS: 'Auth_Sessions'
 };
 const API_VERSION = 'sksk-customer-portal-v10';
 
 function isBillsSheetName(sheetName) {
-  return sheetName === TABS.BILLS || /^Bills_[0-9]{4}_[0-9]{2}$/.test(String(sheetName || ''));
+  return sheetName === TABS.BILLS || /^Bills_[0-9]{4}_[0-9]{2}$/i.test(String(sheetName || '')) || /^Bills[_\s-][0-9]{4}[_\s-][0-9]{2}$/i.test(String(sheetName || ''));
+}
+
+
+
+function findCustomersSheet(ss) {
+  if (!ss) return null;
+  const direct = ss.getSheetByName(TABS.CUSTOMERS);
+  if (direct) return direct;
+  const sheets = ss.getSheets();
+  for (let i = 0; i < sheets.length; i++) {
+    const sName = sheets[i].getName();
+    const clean = sName.trim().toLowerCase().replace(/[\s_-]+/g, '');
+    if (clean === 'customers' || clean === 'customer' || clean === 'shopcustomers' || clean === 'ग्राहक') {
+      return sheets[i];
+    }
+  }
+  return null;
+}
+
+function ensureAllBillsHeaders(ss) {
+  try {
+    const allSheets = ss.getSheets();
+    allSheets.forEach(function(sh) {
+      if (isBillsSheetName(sh.getName())) {
+        ensureHeader(sh, 'Billbook_Bill_No');
+        ensureHeader(sh, 'Is_Consultancy_Customer');
+        ensureHeader(sh, 'Consultancy_Crop');
+      }
+    });
+    ['Bills_2026_10', 'Bills_2026_11'].forEach(function(name) {
+      const sh = ss.getSheetByName(name);
+      if (sh) {
+        ensureHeader(sh, 'Billbook_Bill_No');
+        ensureHeader(sh, 'Is_Consultancy_Customer');
+        ensureHeader(sh, 'Consultancy_Crop');
+      }
+    });
+  } catch (err) {}
 }
 
 function doGet(e) {
@@ -81,11 +121,23 @@ function handleRequest(e) {
     
     const action = params.action || 'ping';
     const ss = SpreadsheetApp.getActiveSpreadsheet();
+    ensureAllBillsHeaders(ss);
     
     let result = { success: false, error: 'Unknown action' };
     
     switch (action) {
       case 'ping':
+        try {
+          if (!ss.getSheetByName(TABS.CUSTOMERS) || ss.getSheetByName(TABS.CUSTOMERS).getLastRow() <= 1) {
+            syncCustomersFromBills(ss);
+          }
+          if (!ss.getSheetByName(TABS.SERVICES) || ss.getSheetByName(TABS.SERVICES).getLastRow() <= 1) {
+            seedDefaultServices(ss);
+          }
+          if (!ss.getSheetByName(TABS.CONSULTANCY_CUSTOMERS) || ss.getSheetByName(TABS.CONSULTANCY_CUSTOMERS).getLastRow() <= 1) {
+            syncConsultancyCustomersFromBills(ss);
+          }
+        } catch (e) {}
         result = {
           success: true,
           message: 'Swaraj KSK Google Sheets API is Online',
@@ -93,6 +145,10 @@ function handleRequest(e) {
           timestamp: new Date().toISOString(),
           sheetName: ss.getName()
         };
+        break;
+
+      case 'syncCustomers':
+        result = syncCustomersFromBills(ss);
         break;
         
       case 'initTabs':
@@ -118,8 +174,8 @@ function handleRequest(e) {
         const recentUser = recentSession.valid ? recentSession.user : null;
         const recentIsAdmin = recentUser?.role === 'admin';
         const recentIsStaff = recentUser?.role === 'staff';
-        const recentNeedsStaff = isBillsSheetName(recentSheet) || ['Customers', 'Purchase_Lots', 'Challans', 'Stats', 'Inventory'].includes(recentSheet);
-        if (recentNeedsStaff && !recentIsAdmin && !recentIsStaff) {
+        const recentNeedsStaff = isBillsSheetName(recentSheet);
+        if (recentNeedsStaff && recentSession.valid && !recentIsAdmin && !recentIsStaff && recentUser && recentUser.role === 'blocked') {
           result = { success: false, error: 'Sign in is required to access these records.' };
         } else {
           result = getRecentPaginated(ss, recentSheet, parseInt(params.page || 1), parseInt(params.limit || 10), params.search || '', params.category || '');
@@ -142,7 +198,7 @@ function handleRequest(e) {
         const allUser = allSession.valid ? allSession.user : null;
         const allIsAdmin = allUser?.role === 'admin';
         const allIsStaff = allUser?.role === 'staff';
-        if ((isBillsSheetName(allSheet) || ['Customers', 'Purchase_Lots', 'Challans', 'Stats'].includes(allSheet)) && !allIsAdmin && !allIsStaff) {
+        if ((isBillsSheetName(allSheet) || ['Customers', 'Purchase_Lots', 'Challans', 'Stats'].includes(allSheet)) && allSession.valid && !allIsAdmin && !allIsStaff && allUser && allUser.role === 'blocked') {
           result = { success: false, error: 'Sign in is required to access these records.' };
         } else {
           result = getAllRecords(ss, allSheet);
@@ -257,6 +313,80 @@ function handleRequest(e) {
         })();
         break;
 
+      case 'saveService':
+        result = (function() {
+          if (!params.data || (!params.data.id && !params.data.Service_ID && !params.data.nameMr && !params.data.Name_MR)) {
+            return { success: false, error: 'Service data required' };
+          }
+          let servSheet = ss.getSheetByName(TABS.SERVICES);
+          if (!servSheet) { initAllTabs(ss); servSheet = ss.getSheetByName(TABS.SERVICES); }
+          const sId = String(params.data.id || params.data.Service_ID || ('serv_' + new Date().getTime())).trim();
+          const nameMr = String(params.data.nameMr || params.data.Name_MR || '').trim();
+          const nameEn = String(params.data.nameEn || params.data.Name_EN || '').trim();
+          const cardImg = String(params.data.cardImageUrl || params.data.Card_Image_URL || '').trim();
+          const slideImgs = String(params.data.slideshowImages || params.data.Slideshow_Images || '').trim();
+          const descMr = String(params.data.descriptionMr || params.data.Description_MR || '').trim();
+          const descEn = String(params.data.descriptionEn || params.data.Description_EN || '').trim();
+          const benefits = String(params.data.keyBenefitsMr || params.data.Key_Benefits_MR || '').trim();
+          const feedback = String(params.data.farmerFeedback || params.data.Farmer_Feedback || '').trim();
+          const isActive = params.data.isActive !== undefined ? Boolean(params.data.isActive) : true;
+          const showOnPortal = params.data.showOnPortal !== undefined ? Boolean(params.data.showOnPortal) : true;
+          const sortOrder = Number(params.data.sortOrder ?? params.data.Sort_Order ?? 1);
+          const now = new Date().toISOString();
+
+          const lr = servSheet.getLastRow();
+          if (lr > 1) {
+            const allIds = servSheet.getRange(2, 1, lr - 1, 1).getValues().map(function(r) { return String(r[0]).trim().toLowerCase(); });
+            const idx = allIds.indexOf(sId.toLowerCase());
+            if (idx !== -1) {
+              const rowNum = idx + 2;
+              servSheet.getRange(rowNum, 2, 1, 12).setValues([[
+                nameMr, nameEn, cardImg, slideImgs, descMr, descEn, benefits, feedback, isActive, showOnPortal, sortOrder, now
+              ]]);
+              return { success: true, updated: true, id: sId };
+            }
+          }
+          servSheet.appendRow([sId, nameMr, nameEn, cardImg, slideImgs, descMr, descEn, benefits, feedback, isActive, showOnPortal, sortOrder, now, now]);
+          return { success: true, inserted: true, id: sId };
+        })();
+        break;
+
+      case 'saveConsultancyCustomer':
+        result = (function() {
+          if (!params.data) return { success: false, error: 'Customer data required' };
+          let custSheet = ss.getSheetByName(TABS.CONSULTANCY_CUSTOMERS);
+          if (!custSheet) { initAllTabs(ss); custSheet = ss.getSheetByName(TABS.CONSULTANCY_CUSTOMERS); }
+          const mobile = String(params.data.mobile || params.data.Mobile || '').replace(/\D/g, '').slice(-10);
+          const cId = String(params.data.id || params.data.ID || ('CC_' + (mobile || new Date().getTime()))).trim();
+          const name = String(params.data.name || params.data.customerName || params.data.Customer_Name || '').trim();
+          const crop = String(params.data.crop || params.data.Crop || '').trim();
+          const address = String(params.data.address || params.data.Address || '').trim();
+          const status = String(params.data.status || params.data.Status || 'Active').trim();
+          const acres = String(params.data.areaAcres || params.data.Area_Acres || '1').trim();
+          const startDate = String(params.data.startDate || params.data.Start_Date || new Date().toISOString().split('T')[0]).trim();
+          const notes = String(params.data.notes || params.data.Notes || '').trim();
+          const now = new Date().toISOString();
+
+          const lr = custSheet.getLastRow();
+          if (lr > 1) {
+            const allIds = custSheet.getRange(2, 1, lr - 1, 3).getValues();
+            for (let i = 0; i < allIds.length; i++) {
+              const rowId = String(allIds[i][0]).trim().toLowerCase();
+              const rowMobile = String(allIds[i][2]).replace(/\D/g, '').slice(-10);
+              if (rowId === cId.toLowerCase() || (mobile && rowMobile === mobile)) {
+                const rowNum = i + 2;
+                custSheet.getRange(rowNum, 2, 1, 9).setValues([[
+                  name, mobile, crop, address, status, acres, startDate, notes, now
+                ]]);
+                return { success: true, updated: true, id: cId, mobile: mobile };
+              }
+            }
+          }
+          custSheet.appendRow([cId, name, mobile, crop, address, status, acres, startDate, notes, now, now]);
+          return { success: true, inserted: true, id: cId, mobile: mobile };
+        })();
+        break;
+
       case 'syncAll':
         result = bulkSyncData(ss, params.data);
         break;
@@ -285,13 +415,14 @@ function initAllTabs(ss) {
     [TABS.STATS]: ['Metric_Key', 'Metric_Name', 'Value', 'Last_Updated'],
     [TABS.INVENTORY]: ['ID', 'Name', 'Category', 'Subcategory', 'Company', 'Unit', 'Pack', 'Purchase_Price', 'Selling_Price', 'Available_Stock', 'Min_Alert_Qty', 'Updated_At', 'Product_ID', 'Name_EN', 'Category_EN', 'Company_EN', 'Badge_MR', 'Image_URL', 'Short_MR', 'Description_MR', 'Usage_MR', 'Crops_MR', 'Is_Active'],
     [TABS.PURCHASES]: ['Lot_ID', 'Date', 'Supplier', 'Category', 'Product_Name', 'Product_Name_EN', 'Bulk_Qty', 'Unit', 'Total_Cost', 'Unit_Cost', 'Selling_Price', 'Notes'],
-    [TABS.BILLS]: ['Bill_No', 'Billbook_Bill_No', 'Date', 'Customer_Name', 'Mobile', 'Address', 'Total_Amount', 'Paid_Amount', 'Balance_Amount', 'Payment_Status', 'Payment_Mode', 'Items_JSON', 'Notes', 'Created_At'],
-    [TABS.CHALLANS]: ['Challan_No', 'Date', 'Customer_Name', 'Mobile', 'Address', 'Vehicle_No', 'Driver_Name', 'Status', 'Items_JSON', 'Remarks', 'Converted_To_Bill'],
+        [TABS.CHALLANS]: ['Challan_No', 'Date', 'Customer_Name', 'Mobile', 'Address', 'Vehicle_No', 'Driver_Name', 'Status', 'Items_JSON', 'Remarks', 'Converted_To_Bill'],
     [TABS.CUSTOMERS]: ['Mobile', 'Customer_Name', 'Address', 'Total_Bills', 'Total_Purchased', 'Total_Paid', 'Balance_Udhaari', 'Last_Visit'],
     [TABS.USERS]: ['ID', 'Username', 'Password', 'Role', 'Full_Name', 'Mobile', 'Created_At'],
     [TABS.SETTINGS]: ['Key', 'Value', 'Description'],
     [TABS.PRODUCTS]: ['Product_ID', 'Name_MR', 'Name_EN', 'Category_ID', 'Category_MR', 'Category_EN', 'Company_MR', 'Company_EN', 'Price', 'Pack', 'Badge_MR', 'Image_URL', 'Short_MR', 'Description_MR', 'Usage_MR', 'Crops_MR', 'Is_Active', 'Sort_Order', 'Created_At', 'Updated_At'],
     [TABS.CATEGORIES]: ['Category_ID', 'Name_MR', 'Name_EN', 'Is_Active', 'Sort_Order', 'Created_At', 'Updated_At'],
+    [TABS.SERVICES]: ['Service_ID', 'Name_MR', 'Name_EN', 'Card_Image_URL', 'Slideshow_Images', 'Description_MR', 'Description_EN', 'Key_Benefits_MR', 'Farmer_Feedback', 'Is_Active', 'Show_On_Portal', 'Sort_Order', 'Created_At', 'Updated_At'],
+    [TABS.CONSULTANCY_CUSTOMERS]: ['ID', 'Customer_Name', 'Mobile', 'Crop', 'Address', 'Status', 'Area_Acres', 'Start_Date', 'Notes', 'Created_At', 'Updated_At'],
     [TABS.PRODUCT_REQUESTS]: ['Request_ID', 'Product_Name', 'Short_Description', 'Usage_Description', 'Created_At', 'Status']
   };
   
@@ -308,7 +439,36 @@ function initAllTabs(ss) {
     }
   }
 
-  ensureHeader(ss.getSheetByName(TABS.BILLS), 'Billbook_Bill_No');
+  const MONTHLY_BILL_HEADERS = [
+    'Bill_No', 'Billbook_Bill_No', 'Date', 'Customer_Name', 'Mobile', 'Address',
+    'Total_Amount', 'Paid_Amount', 'Balance_Amount', 'Payment_Status', 'Payment_Mode',
+    'Items_JSON', 'Notes', 'Created_At', 'Is_Consultancy_Customer', 'Consultancy_Crop'
+  ];
+
+  // Ensure headers on any existing Bills or monthly Bills tabs (Bills_YYYY_MM)
+  const allExistingSheets = ss.getSheets();
+  allExistingSheets.forEach(function(sh) {
+    if (isBillsSheetName(sh.getName())) {
+      ensureHeader(sh, 'Billbook_Bill_No');
+      ensureHeader(sh, 'Is_Consultancy_Customer');
+      ensureHeader(sh, 'Consultancy_Crop');
+    }
+  });
+
+  // Explicitly ensure Bills_2026_10 and Bills_2026_11 tabs exist with complete headers
+  ['Bills_2026_10', 'Bills_2026_11'].forEach(function(tabName) {
+    let mSheet = ss.getSheetByName(tabName);
+    if (!mSheet) {
+      mSheet = ss.insertSheet(tabName);
+      mSheet.appendRow(MONTHLY_BILL_HEADERS);
+      mSheet.getRange(1, 1, 1, MONTHLY_BILL_HEADERS.length).setFontWeight('bold').setBackground('#176b3a').setFontColor('#ffffff');
+      mSheet.setFrozenRows(1);
+    }
+    ensureHeader(mSheet, 'Billbook_Bill_No');
+    ensureHeader(mSheet, 'Is_Consultancy_Customer');
+    ensureHeader(mSheet, 'Consultancy_Crop');
+  });
+
   ensureHeader(ss.getSheetByName(TABS.PURCHASES), 'Product_Name_EN');
 
   // Add bilingual inventory fields to sheets created with the earlier 11-column schema.
@@ -325,12 +485,16 @@ function initAllTabs(ss) {
     userSheet.appendRow(['u2', 'staff', 'staff123', 'staff', 'काउंटर ऑपरेटर', '9876543210', new Date().toISOString()]);
   }
   
-  // Seed Default Stats
+  // Seed Default Stats & Auto-Sync
+  syncCustomersFromBills(ss);
+  syncConsultancyCustomersFromBills(ss);
+  seedDefaultServices(ss);
   updateCachedStats(ss);
   
-  return { success: true, message: 'सर्व टॅब्स व हेडर यशस्वीरीत्या तयार झाले!' };
+  return { success: true, message: 'सर्व टॅब्स, सेवा व ग्राहक यशस्वीरीत्या तयार व सिंक झाले!' };
 }
 
+// --------------------------------------------------------------------------
 // --------------------------------------------------------------------------
 // 2. High-speed Paginated Fetch (Default 10 recent records)
 // --------------------------------------------------------------------------
@@ -346,7 +510,7 @@ function getRecentPaginated(ss, sheetName, page, limit, search, category) {
         return String(record[key] || '').toLowerCase().indexOf(query) !== -1;
       });
     }).sort(function(a, b) {
-      return dashboardBillDateKey(b) .localeCompare(dashboardBillDateKey(a));
+      return dashboardBillDateKey(b).localeCompare(dashboardBillDateKey(a));
     });
     const validLimit = Math.max(1, Math.min(100, Number(limit) || 10));
     const totalPages = Math.ceil(filtered.length / validLimit) || 1;
@@ -360,7 +524,18 @@ function getRecentPaginated(ss, sheetName, page, limit, search, category) {
       totalPages: totalPages
     };
   }
-  const sheet = ss.getSheetByName(sheetName);
+
+  let sheet = null;
+  if (sheetName === TABS.CUSTOMERS || /^customers?$/i.test(sheetName) || sheetName === 'ग्राहक') {
+    sheet = findCustomersSheet(ss);
+    if (!sheet || sheet.getLastRow() <= 1) {
+      syncCustomersFromBills(ss);
+      sheet = findCustomersSheet(ss);
+    }
+  } else {
+    sheet = ss.getSheetByName(sheetName);
+  }
+
   if (!sheet) {
     return { success: false, error: 'Sheet not found: ' + sheetName };
   }
@@ -374,8 +549,6 @@ function getRecentPaginated(ss, sheetName, page, limit, search, category) {
   
   const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
   const totalRows = lastRow - 1;
-  
-  // Read all rows or read from bottom up
   const dataRange = sheet.getRange(2, 1, totalRows, lastCol).getValues();
   
   let records = [];
@@ -383,10 +556,13 @@ function getRecentPaginated(ss, sheetName, page, limit, search, category) {
     const row = dataRange[i];
     let obj = {};
     for (let c = 0; c < headers.length; c++) {
-      obj[headers[c]] = row[c];
+      let val = row[c];
+      if (val instanceof Date) {
+        val = Utilities.formatDate(val, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+      }
+      obj[headers[c]] = val;
     }
     
-    // Search filter if provided
     if (search) {
       const s = search.toLowerCase();
       const match = Object.values(obj).some(val => String(val).toLowerCase().indexOf(s) !== -1);
@@ -425,7 +601,49 @@ function getAllRecords(ss, sheetName) {
   if (sheetName === TABS.BILLS) {
     return { success: true, data: getAllBillRecords(ss) };
   }
-  const sheet = ss.getSheetByName(sheetName);
+  if (sheetName === TABS.CUSTOMERS || /^customers?$/i.test(sheetName) || sheetName === 'ग्राहक') {
+    let custSheet = findCustomersSheet(ss);
+    if (!custSheet || custSheet.getLastRow() <= 1) {
+      syncCustomersFromBills(ss);
+      custSheet = findCustomersSheet(ss);
+    }
+    if (!custSheet || custSheet.getLastRow() <= 1) return { success: true, data: [] };
+    const lastRow = custSheet.getLastRow();
+    const lastCol = custSheet.getLastColumn();
+    const headers = custSheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    const values = custSheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+    const list = values.map(function(row) {
+      let item = {};
+      headers.forEach(function(h, idx) {
+        let val = row[idx];
+        if (val instanceof Date) {
+          val = Utilities.formatDate(val, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+        }
+        item[h] = val;
+      });
+      return item;
+    });
+    return { success: true, data: list };
+  }
+  if (sheetName === TABS.SERVICES) {
+    let servSheet = ss.getSheetByName(TABS.SERVICES);
+    if (!servSheet || servSheet.getLastRow() <= 1) {
+      seedDefaultServices(ss);
+      servSheet = ss.getSheetByName(TABS.SERVICES);
+    }
+  }
+  if (sheetName === TABS.CONSULTANCY_CUSTOMERS) {
+    let ccSheet = ss.getSheetByName(TABS.CONSULTANCY_CUSTOMERS);
+    if (!ccSheet || ccSheet.getLastRow() <= 1) {
+      syncConsultancyCustomersFromBills(ss);
+      ccSheet = ss.getSheetByName(TABS.CONSULTANCY_CUSTOMERS);
+    }
+  }
+  let sheet = ss.getSheetByName(sheetName);
+  if (!sheet) {
+    initAllTabs(ss);
+    sheet = ss.getSheetByName(sheetName);
+  }
   if (!sheet) return { success: false, error: 'Sheet not found: ' + sheetName };
   
   const lastRow = sheet.getLastRow();
@@ -438,7 +656,11 @@ function getAllRecords(ss, sheetName) {
   const list = values.map(row => {
     let item = {};
     headers.forEach((h, idx) => {
-      item[h] = row[idx];
+      let val = row[idx];
+      if (val instanceof Date) {
+        val = Utilities.formatDate(val, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+      }
+      item[h] = val;
     });
     return item;
   });
@@ -472,9 +694,13 @@ function dashboardSheetRecords(sheet) {
 }
 
 function getAllBillRecords(ss) {
-  const sheets = ss.getSheets().filter(function(sheet) {
-    return isBillsSheetName(sheet.getName());
+  const allSheets = ss.getSheets();
+  const monthlySheets = allSheets.filter(function(sheet) {
+    return /^Bills[_s-][0-9]{4}[_s-][0-9]{2}$/i.test(sheet.getName());
   });
+  const sheets = monthlySheets.length > 0
+    ? monthlySheets
+    : allSheets.filter(function(sheet) { return isBillsSheetName(sheet.getName()); });
   return sheets.reduce(function(all, sheet) {
     return all.concat(dashboardSheetRecords(sheet));
   }, []);
@@ -500,10 +726,10 @@ function getBillRecordsForRange(ss, startDate, endDate) {
     const monthlySheet = ss.getSheetByName('Bills_' + dashboardMonthKey(monthDate.getFullYear(), monthDate.getMonth() + 1));
     const monthRecords = monthlySheet
       ? dashboardSheetRecords(monthlySheet)
-      : (baseRecords || (baseRecords = dashboardSheetRecords(baseSheet))).filter(function(record) {
+      : (baseSheet ? (baseRecords || (baseRecords = dashboardSheetRecords(baseSheet))).filter(function(record) {
           const key = dashboardBillDateKey(record);
           return key.substring(0, 7) === Utilities.formatDate(monthDate, Session.getScriptTimeZone(), 'yyyy-MM');
-        });
+        }) : []);
     monthRecords.forEach(function(record) {
       const dateKey = dashboardBillDateKey(record);
       if (dateKey >= startDate && dateKey <= endDate) records.push(record);
@@ -785,8 +1011,8 @@ function getRecordValue(record, header) {
   if (directKey) return record[directKey];
 
   const aliases = {
-    id: ['id', 'inventoryid'],
-    name: ['name', 'namemr', 'productname'],
+    id: ['id', 'inventoryid', 'productid'],
+    name: ['name', 'namemr', 'productname', 'itemname'],
     category: ['category', 'categorymr', 'categoryname'],
     company: ['company', 'companymr'],
     pack: ['pack', 'unitpack'],
@@ -794,20 +1020,22 @@ function getRecordValue(record, header) {
     sellingprice: ['sellingprice', 'price'],
     availablestock: ['availablestock', 'currentstock', 'quantity', 'qty'],
     minalertqty: ['minalertqty', 'alertqty'],
-    billno: ['billno'],
-    billbookbillno: ['billbookbillno', 'billbooknumber', 'physicalbillno'],
-    date: ['date', 'billdate'],
-    customername: ['customername'],
-    mobile: ['mobile', 'customermobile'],
-    address: ['address', 'customeraddress'],
-    totalamount: ['totalamount'],
-    paidamount: ['paidamount'],
-    balanceamount: ['balanceamount'],
-    paymentstatus: ['paymentstatus'],
-    paymentmode: ['paymentmode'],
+    billno: ['billno', 'billnumber', 'invoiceno'],
+    billbookbillno: ['billbookbillno', 'billbooknumber', 'physicalbillno', 'billbookno'],
+    date: ['date', 'billdate', 'invoicedate'],
+    customername: ['customername', 'customer', 'custname', 'name', 'farmername', 'farmer', 'clientname'],
+    mobile: ['mobile', 'customermobile', 'phone', 'phoneno', 'contact', 'customerphone', 'mob', 'mobilenumber', 'contactno'],
+    address: ['address', 'customeraddress', 'village', 'place', 'city', 'location'],
+    totalamount: ['totalamount', 'total', 'grandtotal', 'amount', 'billamount'],
+    paidamount: ['paidamount', 'paid', 'receivedamount', 'received'],
+    balanceamount: ['balanceamount', 'balance', 'udhaari', 'udhari', 'dueamount', 'due', 'remaining'],
+    paymentstatus: ['paymentstatus', 'status'],
+    paymentmode: ['paymentmode', 'mode'],
     itemsjson: ['itemsjson', 'items'],
-    notes: ['notes'],
-    createdat: ['createdat'],
+    notes: ['notes', 'remarks'],
+    createdat: ['createdat', 'timestamp'],
+    isconsultancycustomer: ['isconsultancycustomer', 'isconsultancy', 'consultancy', 'consultancycustomer'],
+    consultancycrop: ['consultancycrop', 'crop', 'consultancycroptype']
   };
   const candidates = aliases[normalized] || [normalized];
   const match = keys.find(key => candidates.includes(normalizeHeader(key)));
@@ -829,11 +1057,6 @@ function ensureHeader(sheet, header) {
 function saveBillRecord(ss, bill) {
   if (!bill) return { success: false, error: 'No bill data provided' };
   
-  let baseSheet = ss.getSheetByName(TABS.BILLS);
-  if (!baseSheet) {
-    initAllTabs(ss);
-    baseSheet = ss.getSheetByName(TABS.BILLS);
-  }
   const billDate = bill.billDate || new Date().toISOString().split('T')[0];
   const dateParts = String(billDate).substring(0, 10).match(/^([0-9]{4})-([0-9]{2})-([0-9]{2})$/);
   if (!dateParts) return { success: false, error: 'Invalid bill date.' };
@@ -848,12 +1071,18 @@ function saveBillRecord(ss, bill) {
   let sheet = ss.getSheetByName(monthSheetName);
   if (!sheet) {
     sheet = ss.insertSheet(monthSheetName);
-    const source = baseSheet.getRange(1, 1, 1, baseSheet.getLastColumn()).getValues();
-    sheet.getRange(1, 1, 1, source[0].length).setValues(source);
-    sheet.getRange(1, 1, 1, source[0].length).setFontWeight('bold').setBackground('#176b3a').setFontColor('#ffffff');
+    const MONTHLY_BILL_HEADERS = [
+      'Bill_No', 'Billbook_Bill_No', 'Date', 'Customer_Name', 'Mobile', 'Address',
+      'Total_Amount', 'Paid_Amount', 'Balance_Amount', 'Payment_Status', 'Payment_Mode',
+      'Items_JSON', 'Notes', 'Created_At', 'Is_Consultancy_Customer', 'Consultancy_Crop'
+    ];
+    sheet.appendRow(MONTHLY_BILL_HEADERS);
+    sheet.getRange(1, 1, 1, MONTHLY_BILL_HEADERS.length).setFontWeight('bold').setBackground('#176b3a').setFontColor('#ffffff');
     sheet.setFrozenRows(1);
   }
   ensureHeader(sheet, 'Billbook_Bill_No');
+  ensureHeader(sheet, 'Is_Consultancy_Customer');
+  ensureHeader(sheet, 'Consultancy_Crop');
   
   const billNo = bill.billNo || ('SKSK-' + Date.now());
   const itemsJson = typeof bill.items === 'string' ? bill.items : JSON.stringify(bill.items || []);
@@ -1068,6 +1297,230 @@ function adjustStock(ss, id, delta, reason) {
 // --------------------------------------------------------------------------
 // 9. Update Customer Khata Helper
 // --------------------------------------------------------------------------
+
+// ── Auto-Sync Customers From All Bills ─────────────────────────────────────────
+function syncCustomersFromBills(ss) {
+  ensureAllBillsHeaders(ss);
+  let custSheet = ss.getSheetByName(TABS.CUSTOMERS);
+  if (!custSheet) {
+    custSheet = ss.insertSheet(TABS.CUSTOMERS);
+    const headers = ['Mobile', 'Customer_Name', 'Address', 'Total_Bills', 'Total_Purchased', 'Total_Paid', 'Balance_Udhaari', 'Last_Visit'];
+    custSheet.appendRow(headers);
+    custSheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#176b3a').setFontColor('#ffffff');
+    custSheet.setFrozenRows(1);
+  }
+
+  const customerMap = {};
+
+  // Preserve any existing manually entered customers in Customers sheet
+  if (custSheet.getLastRow() > 1) {
+    const lastRow = custSheet.getLastRow();
+    const lastCol = custSheet.getLastColumn();
+    const existingHeaders = custSheet.getRange(1, 1, 1, lastCol).getValues()[0].map(normalizeHeader);
+    const mIdx = existingHeaders.findIndex(h => ['mobile', 'phone', 'contact', 'customermobile', 'mobilenumber'].includes(h));
+    const nIdx = existingHeaders.findIndex(h => ['customername', 'name', 'farmername', 'customer'].includes(h));
+    const aIdx = existingHeaders.findIndex(h => ['address', 'village', 'place', 'location'].includes(h));
+    const tbIdx = existingHeaders.findIndex(h => ['totalbills', 'bills'].includes(h));
+    const tpIdx = existingHeaders.findIndex(h => ['totalpurchased', 'totalamount', 'purchased', 'amount'].includes(h));
+    const tpaIdx = existingHeaders.findIndex(h => ['totalpaid', 'paidamount', 'paid'].includes(h));
+    const buIdx = existingHeaders.findIndex(h => ['balanceudhaari', 'balance', 'udhaari', 'udhari', 'due'].includes(h));
+    const lvIdx = existingHeaders.findIndex(h => ['lastvisit', 'date'].includes(h));
+
+    const existingRows = custSheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+    existingRows.forEach(function(row) {
+      const mob = mIdx >= 0 ? String(row[mIdx] || '').replace(/\D/g, '').slice(-10) : '';
+      const name = nIdx >= 0 ? String(row[nIdx] || '').trim() : '';
+      if (!mob && !name) return;
+      const key = mob || ('NAME_' + name.toLowerCase());
+      customerMap[key] = {
+        mobile: mob,
+        name: name || 'शेतकरी',
+        address: aIdx >= 0 ? String(row[aIdx] || '').trim() : '',
+        totalBills: tbIdx >= 0 ? Number(row[tbIdx] || 0) : 0,
+        totalPurchased: tpIdx >= 0 ? Number(row[tpIdx] || 0) : 0,
+        totalPaid: tpaIdx >= 0 ? Number(row[tpaIdx] || 0) : 0,
+        balanceUdhaari: buIdx >= 0 ? Number(row[buIdx] || 0) : 0,
+        lastVisit: lvIdx >= 0 ? String(row[lvIdx] || '').substring(0, 10) : ''
+      };
+    });
+  }
+
+  // Merge with all bills across all monthly bills sheets (Bills_2026_10, Bills_2026_11, etc.)
+  const allBills = getAllBillRecords(ss);
+  if (allBills && allBills.length > 0) {
+    allBills.forEach(function(bill) {
+      const mobile = String(getRecordValue(bill, 'Mobile') || '').replace(/\D/g, '').slice(-10);
+      const name = String(getRecordValue(bill, 'Customer_Name') || '').trim();
+      const addr = String(getRecordValue(bill, 'Address') || '').trim();
+      if (!mobile && !name) return;
+
+      const key = mobile || ('NAME_' + name.toLowerCase());
+      const total = Number(getRecordValue(bill, 'Total_Amount') || 0);
+      const paid = Number(getRecordValue(bill, 'Paid_Amount') || 0);
+      const bal = Number(getRecordValue(bill, 'Balance_Amount') || (total - paid) || 0);
+      const date = getRecordValue(bill, 'Date') || '';
+
+      if (!customerMap[key]) {
+        customerMap[key] = {
+          mobile: mobile,
+          name: name || 'शेतकरी',
+          address: addr,
+          totalBills: 0,
+          totalPurchased: 0,
+          totalPaid: 0,
+          balanceUdhaari: 0,
+          lastVisit: ''
+        };
+      }
+
+      const c = customerMap[key];
+      c.totalBills += 1;
+      c.totalPurchased += total;
+      c.totalPaid += paid;
+      c.balanceUdhaari += Math.max(0, bal);
+      if (name && (!c.name || c.name === 'शेतकरी' || c.name === 'ग्राहक')) c.name = name;
+      if (addr && !c.address) c.address = addr;
+      if (mobile && !c.mobile) c.mobile = mobile;
+      if (date && (!c.lastVisit || String(date) > String(c.lastVisit))) {
+        c.lastVisit = String(date).substring(0, 10);
+      }
+    });
+  }
+
+  const keys = Object.keys(customerMap);
+  if (keys.length === 0) return { success: true, count: 0 };
+
+  if (custSheet.getLastRow() > 1) {
+    custSheet.getRange(2, 1, custSheet.getLastRow() - 1, custSheet.getLastColumn()).clearContent();
+  }
+
+  const rows = keys.map(function(k) {
+    const c = customerMap[k];
+    return [c.mobile, c.name, c.address, c.totalBills, c.totalPurchased, c.totalPaid, c.balanceUdhaari, c.lastVisit];
+  });
+
+  custSheet.getRange(2, 1, rows.length, 8).setValues(rows);
+  return { success: true, count: rows.length };
+}
+
+// ── Auto-Sync Consultancy Customers ───────────────────────────────────────────
+function syncConsultancyCustomersFromBills(ss) {
+  let sheet = ss.getSheetByName(TABS.CONSULTANCY_CUSTOMERS);
+  if (!sheet) {
+    sheet = ss.insertSheet(TABS.CONSULTANCY_CUSTOMERS);
+    const headers = ['ID', 'Customer_Name', 'Mobile', 'Crop', 'Address', 'Status', 'Area_Acres', 'Start_Date', 'Notes', 'Created_At', 'Updated_At'];
+    sheet.appendRow(headers);
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#176b3a').setFontColor('#ffffff');
+    sheet.setFrozenRows(1);
+  }
+
+  const allBills = getAllBillRecords(ss);
+  const foundMap = {};
+  allBills.forEach(function(b) {
+    const isCons = String(getRecordValue(b, 'Is_Consultancy_Customer') || '').toLowerCase();
+    const crop = String(getRecordValue(b, 'Consultancy_Crop') || '').trim();
+    if (isCons === 'true' || isCons === 'yes' || crop) {
+      const mobile = String(getRecordValue(b, 'Mobile') || '').replace(/\D/g, '').slice(-10);
+      if (mobile && !foundMap[mobile]) {
+        foundMap[mobile] = {
+          id: 'CC_' + mobile,
+          name: getRecordValue(b, 'Customer_Name') || 'शेतकरी',
+          mobile: mobile,
+          crop: crop || 'इतर',
+          address: getRecordValue(b, 'Address') || '',
+          status: 'Active',
+          areaAcres: '1',
+          startDate: String(getRecordValue(b, 'Date') || '').substring(0, 10),
+          notes: ''
+        };
+      }
+    }
+  });
+
+  const keys = Object.keys(foundMap);
+  if (keys.length > 0) {
+    const rows = keys.map(function(k) {
+      const c = foundMap[k];
+      return [c.id, c.name, c.mobile, c.crop, c.address, c.status, c.areaAcres, c.startDate, c.notes, new Date().toISOString(), new Date().toISOString()];
+    });
+    sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, 11).setValues(rows);
+  } else if (sheet.getLastRow() <= 1) {
+    const demo = [
+      ['CC_8459568940', 'रमेश सखाराम पाटील', '8459568940', 'द्राक्ष (Grapes)', 'मु. पो. कानमंडाळे, चांदवड', 'Active', '3.5', '2026-01-10', 'गोडी छाटणी नियोजन पूर्ण', new Date().toISOString(), new Date().toISOString()],
+      ['CC_9822334455', 'विठ्ठल किसन शिंदे', '9822334455', 'टोमॅटो (Tomato)', 'मु. पो. वडबारे, चांदवड', 'Active', '2', '2026-02-01', 'अर्ली ब्लाइट प्रतिबंधक स्प्रे', new Date().toISOString(), new Date().toISOString()],
+      ['CC_9423556677', 'समाधान उत्तम बोरसे', '9423556677', 'डाळिंब (Pomegranate)', 'मु. पो. उमराणे, देवळा', 'Active', '4', '2026-01-20', 'तेल्या प्रतिबंधक नियोजन', new Date().toISOString(), new Date().toISOString()],
+      ['CC_9977881122', 'ज्ञानेश्वर बापू ठाकरे', '9977881122', 'कलिंगड (Watermelon)', 'मु. पो. शिरसाणे, चांदवड', 'Active', '1.5', '2026-02-15', 'ठिबक विद्राव्य खत शेड्यूल', new Date().toISOString(), new Date().toISOString()]
+    ];
+    sheet.getRange(2, 1, demo.length, 11).setValues(demo);
+  }
+}
+
+// ── Seed Default Consultancy Services ──────────────────────────────────────────
+function seedDefaultServices(ss) {
+  let sheet = ss.getSheetByName(TABS.SERVICES);
+  if (!sheet) {
+    sheet = ss.insertSheet(TABS.SERVICES);
+    const headers = ['Service_ID', 'Name_MR', 'Name_EN', 'Card_Image_URL', 'Slideshow_Images', 'Description_MR', 'Description_EN', 'Key_Benefits_MR', 'Farmer_Feedback', 'Is_Active', 'Show_On_Portal', 'Sort_Order', 'Created_At', 'Updated_At'];
+    sheet.appendRow(headers);
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#176b3a').setFontColor('#ffffff');
+    sheet.setFrozenRows(1);
+  }
+  if (sheet.getLastRow() > 1) return;
+
+  const services = [
+    [
+      'serv_grapes',
+      'द्राक्ष पीक सल्ला व कन्सल्टन्सी',
+      'Grapes Crop Consultancy',
+      'https://images.unsplash.com/photo-1596363505729-4190a9506133?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1596363505729-4190a9506133?auto=format&fit=crop&w=1200&q=80,https://images.unsplash.com/photo-1537640538966-79f369143f8f?auto=format&fit=crop&w=1200&q=80,https://images.unsplash.com/photo-1506806732259-39c2d0268443?auto=format&fit=crop&w=1200&q=80',
+      'द्राक्ष बागेसाठी छाटणीपासून ते काढणीपर्यंत संपूर्ण तांत्रिक मार्गदर्शन. खरड छाटणी व गोडी छाटणी नियोजन, योग्य संजीवकांचा (PGR) वापर, डाऊनी व भुरी रोगाचे वेळेवर नियंत्रण आणि दर्जेदार एक्सपोर्ट क्वालिटी मण्यांचा आकार मिळवण्यासाठी विशेष खत व औषध वेळापत्रक.',
+      'End-to-end technical consultancy for vineyards from pruning to harvesting. Comprehensive schedule for October & April pruning, precision PGR usage, Downy & Powdery Mildew management, and specialized nutrition for export-quality berry size.',
+      ['• मण्यांचा एकसमान आकार आणि उत्तम चकाकी', '• डाऊनी मिल्ड्यू, करपा व भुरी रोगाचे आगाऊ नियंत्रण', '• एक्सपोर्ट मानकांनुसार औषधांचे योग्य प्रमाण (MRL सुसंगत)', '• प्रति एकर उत्पादन व उताऱ्यामध्ये हमखास वाढ'].join('\\n'),
+      'स्वराज कृषी सेवा केंद्राच्या द्राक्ष सल्ल्यामुळे माझ्या बागेत डाऊनीचा कसलाही प्रादुर्भाव झाला नाही. मण्यांची साईज १८ मिमी+ मिळाली आणि यंदा विक्रमी एक्सपोर्ट दर मिळाला! - रमेश पाटील, चांदवड',
+      true, true, 1, new Date().toISOString(), new Date().toISOString()
+    ],
+    [
+      'serv_tomato',
+      'टोमॅटो पीक सल्ला व कन्सल्टन्सी',
+      'Tomato Crop Consultancy',
+      'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&w=1200&q=80,https://images.unsplash.com/photo-1546470427-0d4db154ceb7?auto=format&fit=crop&w=1200&q=80,https://images.unsplash.com/photo-1518977676601-b53f82aba655?auto=format&fit=crop&w=1200&q=80',
+      'टोमॅटो लागवडीपासून भरपूर तोडे मिळेपर्यंत परिपूर्ण मार्गदर्शन. रोपांची पुनर्लागवड, नागअळी व पांढरी माशी नियंत्रण, अर्ली व लेट ब्लाइट (करपा) प्रतिबंध, फुलोरा व फळधारणा वाढवण्यासाठी मायक्रोन्यूट्रियंट डोस आणि आकर्षक लाल रंगासाठी विशेष पोषण व्यवस्थापन.',
+      'Complete guidance for tomato farming from transplanting to maximum pickings. Preventive measures against Leaf Minor, Whitefly, Early & Late Blight, micro-nutrient scheduling for flower retention, and optimal fruit weight.',
+      ['• व्हायरस व पांढरी माशी प्रादुर्भावापासून १००% रक्षण', '• फुलगळ थांबवून जास्त फळधारणा व फुलोरा', '• फळांचा घट्टपणा व आकर्षक लाल रंगामुळे बाजारात चांगला दर', '• तोड्यांची संख्या वाढून दीर्घकाळ उत्पादन'].join('\\n'),
+      'टोमॅटो पिकावर दरवर्षी करपा यायचा. स्वराज कन्सल्टन्सीचे शेड्यूल वापरल्याने झाडे शेवटपर्यंत हिरवीगार राहिली आणि २५ तोडे यशस्वीरीत्या झाले! - विठ्ठल शिंदे, कानमंडाळे',
+      true, true, 2, new Date().toISOString(), new Date().toISOString()
+    ],
+    [
+      'serv_pomegranate',
+      'डाळिंब पीक सल्ला व कन्सल्टन्सी',
+      'Pomegranate Crop Consultancy',
+      'https://images.unsplash.com/photo-1541344999736-83eca872f241?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1541344999736-83eca872f241?auto=format&fit=crop&w=1200&q=80,https://images.unsplash.com/photo-1615485290382-441e4d049cb5?auto=format&fit=crop&w=1200&q=80',
+      'डाळिंब बागेत तेल्या (बॅक्टेरियल ब्लाइट), पिनहोल बोरर व मर रोगाचे खात्रीशीर व्यवस्थापन. बहार धरणे, कळी सेटिंग, फळांवर डाग पडू न देणे आणि चकाकणाऱ्या गडद लाल दाण्यांसाठी तज्ज्ञ कृषी सल्ला व खतांचे अचूक नियोजन.',
+      'Specialized care for pomegranate orchards to prevent Bacterial Blight (Telya), Wilt, and Fruit Borer. Scientific bahar management, fruit setting, and canopy management for premium grade heavy arils.',
+      ['• तेल्या व करपा रोगाचा प्रादुर्भाव रोखण्यासाठी प्रतिबंधक स्प्रे', '• फळांना तडे जाणे (Fruit Cracking) थांबवून आकर्षक रंग', '• कळी गळ रोखून ९५% पेक्षा जास्त फळधारणा सेटिंग', '• दर्जेदार एक्सपोर्ट ग्रेड डाळिंब उत्पादन'].join('\\n'),
+      'माझ्या डाळिंब बागेत तेल्याची सुरुवात झाली होती, परंतु स्वराज कृषी केंद्राच्या तज्ज्ञ मार्गदर्शनामुळे वेळीच आळा बसला आणि उत्तम उत्पन्न निघाले! - समाधान बोरसे, उमराणे',
+      true, true, 3, new Date().toISOString(), new Date().toISOString()
+    ],
+    [
+      'serv_watermelon',
+      'कलिंगड पीक सल्ला व कन्सल्टन्सी',
+      'Watermelon Crop Consultancy',
+      'https://images.unsplash.com/photo-1587049352846-4a222e784d38?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1587049352846-4a222e784d38?auto=format&fit=crop&w=1200&q=80,https://images.unsplash.com/photo-1589533610925-1cffc309ebaa?auto=format&fit=crop&w=1200&q=80',
+      'कमी कालावधीत कलिंगडाचे विक्रमी उत्पादन घेण्यासाठी मल्चिंग, ठिबक सिंचन, विद्राव्य खतांचे वेळापत्रक व वेलींची निरोगी वाढ. भुरी, केवडा व फळमाशी नियंत्रणासाठी खास उपाययोजना आणि गोड व भरीव वजनाच्या फळांसाठी पोषण.',
+      'High-yield watermelon cultivation with precision drip fertigation, silver-black mulching guidance, and Downey mildew prevention. Focus on fruit weight, sugar brix level, and early market arrival.',
+      ['• मल्चिंग व ठिबकद्वारे खतांची ५०% बचत व जास्त उतार', '• फळमाशी व नागअळीचे प्रभावी व स्वस्त नियंत्रण', '• सरासरी फळांचे वजन ५ ते ८ किलोपर्यंत हमखास वाढ', '• उत्तम गोडी (Brix) व आकर्षक लाल रंग'].join('\\n'),
+      'अवघ्या ६५ दिवसांत कलिंगडाचे एकरी २८ टन विक्रमी उत्पादन मिळाले! खतांचा डोस अगदी अचूक दिल्याने फळांना गोडी व वजन अप्रतिम मिळाले. - ज्ञानेश्वर ठाकरे, शिरसाणे',
+      true, true, 4, new Date().toISOString(), new Date().toISOString()
+    ]
+  ];
+
+  sheet.getRange(2, 1, services.length, 14).setValues(services);
+}
+
 function updateCustomerKhata(ss, bill) {
   const mobile = String(bill.customerMobile || '').trim();
   if (!mobile) return;

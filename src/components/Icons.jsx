@@ -24,3 +24,7 @@ export const ClipboardCheck=make('☑');
 export const Navigation=make('➤');
 export const send=make('➤');
 export const User=make('👤');
+export const ChevronLeft=make('‹');
+export const ChevronRight=make('›');
+export const Sparkles=make('✨');
+export const PhoneCall=make('📞');

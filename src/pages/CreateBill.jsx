@@ -15,7 +15,13 @@ import {
 } from '../service/billingService';
 import {
   getLiveInventoryItems,
-  saveBillWithInventoryDeduction
+  saveBillWithInventoryDeduction,
+  fetchAllShopCustomers,
+  fetchAllConsultancyCustomers,
+  saveConsultancyCustomer,
+  readStorage,
+  STORAGE_KEYS,
+  DEFAULT_SHOP_CUSTOMERS
 } from '../service/googleSheetsService';
 import { getShopInfo } from '../service/shopService';
 import ShopProp from '../config/shopProps';
@@ -32,6 +38,27 @@ export default function CreateBill() {
   const [billDate, setBillDate] = useState(getTodayDate());
   const [billBookBillNo, setBillBookBillNo] = useState('');
   const [finalGeneratedBillNo, setFinalGeneratedBillNo] = useState(null);
+
+  // Existing Customer Autocomplete & Consultancy States - pre-seed shopCustomers immediately from cache
+  const [shopCustomers, setShopCustomers] = useState(() => {
+    const cached = readStorage(STORAGE_KEYS.CUSTOMERS, {});
+    const vals = Object.values(cached || {});
+    return vals.length > 0 ? vals : DEFAULT_SHOP_CUSTOMERS;
+  });
+  const [consultancyCustomers, setConsultancyCustomers] = useState([]);
+  const [isConsultancyCustomer, setIsConsultancyCustomer] = useState(false);
+  const [selectedConsultancyId, setSelectedConsultancyId] = useState('');
+  const [consultancyCrop, setConsultancyCrop] = useState('');
+  const [showConsultancyModal, setShowConsultancyModal] = useState(false);
+  const [isSavingConsultancy, setIsSavingConsultancy] = useState(false);
+  const [newConsultancyForm, setNewConsultancyForm] = useState({
+    name: '',
+    mobile: '',
+    crop: 'द्राक्ष (Grapes)',
+    areaAcres: '1',
+    address: '',
+    notes: ''
+  });
 
   // Enhanced Payment Status & Options
   const [paymentStatus, setPaymentStatus] = useState('Fully Paid'); // 'Fully Paid' | 'Half Paid' | 'Not Paid'
@@ -57,10 +84,105 @@ export default function CreateBill() {
 
   const invoiceRef = useRef(null);
 
-  // Load inventory on mount
+  // Load inventory and customers on mount
   useEffect(() => {
     getLiveInventoryItems().then(setInventory).catch((e) => console.warn('Inventory load error:', e));
+    reloadCustomers();
   }, []);
+
+  const reloadCustomers = async () => {
+    try {
+      const [sList, cList] = await Promise.all([
+        fetchAllShopCustomers(true),
+        fetchAllConsultancyCustomers(true)
+      ]);
+      if (Array.isArray(sList) && sList.length > 0) setShopCustomers(sList);
+      if (Array.isArray(cList) && cList.length > 0) setConsultancyCustomers(cList);
+    } catch (e) {
+      console.warn('Customer reload error:', e);
+    }
+  };
+
+  // Handle selecting an existing customer from the dropdown
+  const handleSelectCustomer = (selectedVal) => {
+    if (!selectedVal) return;
+    const allCust = [...consultancyCustomers, ...shopCustomers];
+    const found = allCust.find(
+      (c) =>
+        String(c.mobile || '').replace(/\D/g, '').slice(-10) === selectedVal ||
+        c.name === selectedVal ||
+        c.id === selectedVal
+    );
+    if (found) {
+      setCustomerName(found.name || '');
+      setCustomerMobile(found.mobile || selectedVal);
+      if (found.address) setCustomerAddress(found.address);
+
+      // Check if this customer is registered in consultancy
+      const matchedCons = consultancyCustomers.find(
+        (c) =>
+          (found.mobile && String(c.mobile || '').replace(/\D/g, '').slice(-10) === found.mobile) ||
+          (c.name && found.name && c.name.toLowerCase().trim() === found.name.toLowerCase().trim())
+      );
+      if (matchedCons) {
+        setIsConsultancyCustomer(true);
+        setSelectedConsultancyId(matchedCons.id || matchedCons.mobile);
+        setConsultancyCrop(matchedCons.crop || 'द्राक्ष (Grapes)');
+      }
+    }
+  };
+
+  // Handle selecting from consultancy dropdown
+  const handleSelectConsultancyCustomer = (cId) => {
+    setSelectedConsultancyId(cId);
+    if (!cId) return;
+    const found = consultancyCustomers.find((c) => (c.id || c.mobile) === cId);
+    if (found) {
+      setCustomerName(found.name || customerName);
+      setCustomerMobile(found.mobile || customerMobile);
+      if (found.address) setCustomerAddress(found.address);
+      setConsultancyCrop(found.crop || '');
+    }
+  };
+
+  // Open popup to register new consultancy customer from bill info
+  const handleOpenNewConsultancyModal = () => {
+    setNewConsultancyForm({
+      name: customerName || '',
+      mobile: cleanMobileNumber(customerMobile) || '',
+      crop: consultancyCrop || 'द्राक्ष (Grapes)',
+      areaAcres: '1',
+      address: customerAddress || '',
+      notes: ''
+    });
+    setShowConsultancyModal(true);
+  };
+
+  // Save new consultancy customer from the quick modal
+  const handleSaveNewConsultancyFromModal = async (e) => {
+    e.preventDefault();
+    if (!newConsultancyForm.name || !newConsultancyForm.mobile) {
+      alert('कृपया नाव व मोबाईल क्रमांक भरा.');
+      return;
+    }
+    setIsSavingConsultancy(true);
+    try {
+      await saveConsultancyCustomer(newConsultancyForm);
+      const updated = await fetchAllConsultancyCustomers(true);
+      setConsultancyCustomers(updated);
+      setIsConsultancyCustomer(true);
+      setSelectedConsultancyId(newConsultancyForm.mobile);
+      setConsultancyCrop(newConsultancyForm.crop);
+      setCustomerName(newConsultancyForm.name);
+      setCustomerMobile(newConsultancyForm.mobile);
+      if (newConsultancyForm.address) setCustomerAddress(newConsultancyForm.address);
+      setShowConsultancyModal(false);
+    } catch (err) {
+      alert('कन्सल्टन्सी शेतकरी नोंदणी करताना त्रुटी आली: ' + err.message);
+    } finally {
+      setIsSavingConsultancy(false);
+    }
+  };
 
   // Prepopulate if redirected from Challan conversion
   useEffect(() => {
@@ -188,7 +310,9 @@ export default function CreateBill() {
       dueDate,
       notes: notes.trim(),
       items,
-      totalAmount
+      totalAmount,
+      isConsultancy: isConsultancyCustomer,
+      consultancyCrop: isConsultancyCustomer ? (consultancyCrop || 'इतर') : ''
     };
   };
 
@@ -285,7 +409,9 @@ ${shop.address ? `📍 पत्ता: ${shop.address}\n` : ''}धन्यव�
       dueDate,
       notes: notes.trim(),
       items,
-      totalAmount
+      totalAmount,
+      isConsultancy: isConsultancyCustomer,
+      consultancyCrop: isConsultancyCustomer ? (consultancyCrop || 'इतर') : ''
     };
 
     try {
@@ -370,6 +496,9 @@ ${shop.address ? `📍 पत्ता: ${shop.address}\n` : ''}धन्यव�
     setCustomerName('');
     setCustomerMobile('');
     setCustomerAddress('');
+    setIsConsultancyCustomer(false);
+    setSelectedConsultancyId('');
+    setConsultancyCrop('');
     setBillDate(getTodayDate());
     setBillBookBillNo('');
     setFinalGeneratedBillNo(null);
@@ -490,6 +619,65 @@ ${shop.address ? `📍 पत्ता: ${shop.address}\n` : ''}धन्यव�
             👤 ग्राहकाची व बिलाची माहिती (Customer & Bill Info)
           </div>
 
+          {/* Quick Existing Customer Auto-Fill Dropdown */}
+          <div style={{ background: '#f8fbf9', border: '1px solid #d5e7d9', borderRadius: '12px', padding: '12px 16px', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: '#176b3a' }}>
+                🔍 अस्तित्वात असलेला ग्राहक निवडा (Select Existing Customer to Auto-populate):
+              </label>
+              <button
+                type="button"
+                onClick={reloadCustomers}
+                style={{
+                  background: '#eaf6ee',
+                  border: '1px solid #c2e2cb',
+                  color: '#176b3a',
+                  borderRadius: '6px',
+                  padding: '2px 8px',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+                title="ग्राहक यादी रिफ्रेश करा"
+              >
+                🔄 रिफ्रेश
+              </button>
+            </div>
+            <select
+              style={{
+                width: '100%',
+                padding: '9px 12px',
+                borderRadius: '8px',
+                border: '1px solid #cad8cd',
+                fontSize: '13px',
+                background: '#fff',
+                cursor: 'pointer'
+              }}
+              onChange={(e) => handleSelectCustomer(e.target.value)}
+              defaultValue=""
+            >
+              <option value="">-- ग्राहक निवडा (किंवा खाली नवीन ग्राहकाची माहिती भरा) --</option>
+              {consultancyCustomers.length > 0 && (
+                <optgroup label="🌱 कन्सल्टन्सी शेतकरी (Consultancy Farmers)">
+                  {consultancyCustomers.map((c) => (
+                    <option key={`cons_${c.id || c.mobile || c.name}`} value={c.mobile || c.name || c.id}>
+                      🌱 {c.name} - {c.crop} {c.mobile ? `(${c.mobile})` : ''}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {shopCustomers.length > 0 && (
+                <optgroup label="🛒 दुकानाचे खरेदीदार ग्राहक (Shop Customers)">
+                  {shopCustomers.map((c, idx) => (
+                    <option key={`shop_${c.mobile || c.name || idx}`} value={c.mobile || c.name || c.id}>
+                      🛒 {c.name} {c.mobile ? `(${c.mobile})` : ''} - उधारी: ₹{c.balanceUdhaari || 0}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+          </div>
+
           <div className="billing-grid-3">
             <div className="form-group">
               <label>डिजिटल बिल क्रमांक (Digital Bill ID - Read Only):</label>
@@ -590,6 +778,126 @@ ${shop.address ? `📍 पत्ता: ${shop.address}\n` : ''}धन्यव�
               value={customerAddress}
               onChange={(e) => setCustomerAddress(e.target.value)}
             />
+          </div>
+
+          {/* Consultancy Customer Mapping Option */}
+          <div
+            style={{
+              marginTop: '16px',
+              padding: '16px',
+              borderRadius: '14px',
+              background: isConsultancyCustomer ? '#f2f8f3' : '#fbfcfa',
+              border: isConsultancyCustomer ? '1.5px solid #27ae60' : '1px dashed #cad8cd',
+              transition: 'all 0.2s'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  cursor: 'pointer',
+                  fontWeight: 700,
+                  fontSize: '14px',
+                  color: isConsultancyCustomer ? '#176b3a' : '#334139'
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={isConsultancyCustomer}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setIsConsultancyCustomer(checked);
+                    if (checked && !consultancyCrop) {
+                      setConsultancyCrop('द्राक्ष (Grapes)');
+                    }
+                  }}
+                  style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                />
+                <span>🌱 कन्सल्टन्सी सेवा ग्राहक आहे का? (For Consultancy Service Customer?)</span>
+              </label>
+
+              {isConsultancyCustomer && (
+                <button
+                  type="button"
+                  onClick={handleOpenNewConsultancyModal}
+                  style={{
+                    background: '#176b3a',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '6px 12px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  ➕ नवीन कन्सल्टन्सी शेतकरी नोंदवा
+                </button>
+              )}
+            </div>
+
+            {isConsultancyCustomer && (
+              <div style={{ marginTop: '14px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#176b3a', marginBottom: '4px' }}>
+                    नोंदणीकृत कन्सल्टन्सी शेतकरी निवडा:
+                  </label>
+                  <select
+                    value={selectedConsultancyId}
+                    onChange={(e) => handleSelectConsultancyCustomer(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      border: '1px solid #cad8cd',
+                      fontSize: '13px',
+                      background: '#fff'
+                    }}
+                  >
+                    <option value="">-- कन्सल्टन्सी शेतकरी निवडा --</option>
+                    {consultancyCustomers.map((c) => (
+                      <option key={`cc_${c.id || c.mobile}`} value={c.id || c.mobile}>
+                        {c.name} - {c.crop} ({c.mobile})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#176b3a', marginBottom: '4px' }}>
+                    कन्सल्टन्सी पीक (Crop) निवडा/बदला:
+                  </label>
+                  <select
+                    value={consultancyCrop}
+                    onChange={(e) => setConsultancyCrop(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      border: '1px solid #cad8cd',
+                      fontSize: '13px',
+                      background: '#fff'
+                    }}
+                  >
+                    <option value="द्राक्ष (Grapes)">द्राक्ष (Grapes)</option>
+                    <option value="टोमॅटो (Tomato)">टोमॅटो (Tomato)</option>
+                    <option value="डाळिंब (Pomegranate)">डाळिंब (Pomegranate)</option>
+                    <option value="कलिंगड (Watermelon)">कलिंगड (Watermelon)</option>
+                    <option value="कांदा (Onion)">कांदा (Onion)</option>
+                    <option value="ऊस (Sugarcane)">ऊस (Sugarcane)</option>
+                    <option value="इतर पीक (Other)">इतर पीक (Other)</option>
+                  </select>
+                </div>
+
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <small style={{ color: '#176b3a', fontWeight: 600 }}>
+                    💡 या बिलामधील सर्व खते व औषधे या शेतकऱ्याच्या <b>{consultancyCrop || 'पीक'}</b> कन्सल्टन्सी खात्यात आपोआप ट्रॅक होतील.
+                  </small>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -867,6 +1175,10 @@ ${shop.address ? `📍 पत्ता: ${shop.address}\n` : ''}धन्यव�
             className="btn-reset"
             onClick={handleResetForm}
             disabled={isProcessing}
+            style={{
+              cursor: isProcessing ? 'not-allowed' : 'pointer',
+              opacity: isProcessing ? 0.6 : 1
+            }}
           >
             🔄 रीसेट करा
           </button>
@@ -878,20 +1190,21 @@ ${shop.address ? `📍 पत्ता: ${shop.address}\n` : ''}धन्यव�
               onClick={() => handleExecuteAction('whatsapp')}
               disabled={isProcessing}
               style={{
-                background: '#25D366',
+                background: isProcessing && actionType === 'whatsapp' ? '#128C7E' : '#25D366',
                 color: '#ffffff',
                 border: 'none',
                 borderRadius: '10px',
                 padding: '12px 18px',
                 fontSize: '14px',
                 fontWeight: '700',
-                cursor: 'pointer',
+                cursor: isProcessing ? 'not-allowed' : 'pointer',
+                opacity: isProcessing && actionType !== 'whatsapp' ? 0.65 : 1,
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '6px'
               }}
             >
-              💬 सेव्ह व WhatsApp वर पाठवा
+              {isProcessing && actionType === 'whatsapp' ? '⏳ शीटमध्ये सेव्ह व WhatsApp उघडत आहे...' : '💬 सेव्ह व WhatsApp वर पाठवा'}
             </button>
 
             <button
@@ -899,9 +1212,14 @@ ${shop.address ? `📍 पत्ता: ${shop.address}\n` : ''}धन्यव�
               className="secondary-btn"
               onClick={() => handleExecuteAction('save')}
               disabled={isProcessing}
-              style={{ padding: '12px 18px', fontSize: '14px' }}
+              style={{
+                padding: '12px 18px',
+                fontSize: '14px',
+                cursor: isProcessing ? 'not-allowed' : 'pointer',
+                opacity: isProcessing && actionType !== 'save' ? 0.65 : 1
+              }}
             >
-              💾 फक्त सेव्ह करा
+              {isProcessing && actionType === 'save' ? '⏳ शीटमध्ये सेव्ह होत आहे...' : '💾 फक्त सेव्ह करा'}
             </button>
 
             {/* Print & Save */}
@@ -910,9 +1228,16 @@ ${shop.address ? `📍 पत्ता: ${shop.address}\n` : ''}धन्यव�
               className="secondary-btn"
               onClick={() => handleExecuteAction('print')}
               disabled={isProcessing}
-              style={{ padding: '12px 18px', fontSize: '14px', background: '#eaf5eb', color: '#176b3a' }}
+              style={{
+                padding: '12px 18px',
+                fontSize: '14px',
+                background: '#eaf5eb',
+                color: '#176b3a',
+                cursor: isProcessing ? 'not-allowed' : 'pointer',
+                opacity: isProcessing && actionType !== 'print' ? 0.65 : 1
+              }}
             >
-              🖨️ प्रिंट व सेव्ह
+              {isProcessing && actionType === 'print' ? '⏳ शीटमध्ये सेव्ह व प्रिंट तयार होत आहे...' : '🖨️ प्रिंट व सेव्ह'}
             </button>
 
             {/* Download PDF & Save */}
@@ -921,8 +1246,12 @@ ${shop.address ? `📍 पत्ता: ${shop.address}\n` : ''}धन्यव�
               className="btn-generate-pdf"
               onClick={() => handleExecuteAction('pdf')}
               disabled={isProcessing}
+              style={{
+                cursor: isProcessing ? 'not-allowed' : 'pointer',
+                opacity: isProcessing && actionType !== 'pdf' ? 0.65 : 1
+              }}
             >
-              📥 PDF डाऊनलोड व सेव्ह
+              {isProcessing && actionType === 'pdf' ? '⏳ शीटमध्ये सेव्ह व PDF तयार होत आहे...' : '📥 PDF डाऊनलोड व सेव्ह'}
             </button>
           </div>
 
@@ -1035,7 +1364,13 @@ ${shop.address ? `📍 पत्ता: ${shop.address}\n` : ''}धन्यव�
                 type="button"
                 className="secondary-btn"
                 onClick={() => setPreviewOpen(false)}
-                style={{ padding: '10px 16px', fontSize: '13px' }}
+                disabled={isProcessing}
+                style={{
+                  padding: '10px 16px',
+                  fontSize: '13px',
+                  cursor: isProcessing ? 'not-allowed' : 'pointer',
+                  opacity: isProcessing ? 0.6 : 1
+                }}
               >
                 बंद करा
               </button>
@@ -1046,17 +1381,18 @@ ${shop.address ? `📍 पत्ता: ${shop.address}\n` : ''}धन्यव�
                   onClick={() => handleExecuteAction('whatsapp')}
                   disabled={isProcessing}
                   style={{
-                    background: '#25D366',
+                    background: isProcessing && actionType === 'whatsapp' ? '#128C7E' : '#25D366',
                     color: '#ffffff',
                     border: 'none',
                     borderRadius: '8px',
                     padding: '10px 16px',
                     fontSize: '13px',
                     fontWeight: '700',
-                    cursor: 'pointer'
+                    cursor: isProcessing ? 'not-allowed' : 'pointer',
+                    opacity: isProcessing && actionType !== 'whatsapp' ? 0.65 : 1
                   }}
                 >
-                  💬 WhatsApp शेअर
+                  {isProcessing && actionType === 'whatsapp' ? '⏳ सेव्ह व WhatsApp...' : '💬 WhatsApp शेअर'}
                 </button>
 
                 <button
@@ -1064,9 +1400,14 @@ ${shop.address ? `📍 पत्ता: ${shop.address}\n` : ''}धन्यव�
                   className="secondary-btn"
                   onClick={() => handleExecuteAction('save')}
                   disabled={isProcessing}
-                  style={{ padding: '10px 16px', fontSize: '13px' }}
+                  style={{
+                    padding: '10px 16px',
+                    fontSize: '13px',
+                    cursor: isProcessing ? 'not-allowed' : 'pointer',
+                    opacity: isProcessing && actionType !== 'save' ? 0.65 : 1
+                  }}
                 >
-                  💾 फक्त सेव्ह करा
+                  {isProcessing && actionType === 'save' ? '⏳ शीटमध्ये सेव्ह होत आहे...' : '💾 फक्त सेव्ह करा'}
                 </button>
 
                 <button
@@ -1074,9 +1415,14 @@ ${shop.address ? `📍 पत्ता: ${shop.address}\n` : ''}धन्यव�
                   className="secondary-btn"
                   onClick={() => handleExecuteAction('print')}
                   disabled={isProcessing}
-                  style={{ padding: '10px 16px', fontSize: '13px' }}
+                  style={{
+                    padding: '10px 16px',
+                    fontSize: '13px',
+                    cursor: isProcessing ? 'not-allowed' : 'pointer',
+                    opacity: isProcessing && actionType !== 'print' ? 0.65 : 1
+                  }}
                 >
-                  🖨️ थेट प्रिंट
+                  {isProcessing && actionType === 'print' ? '⏳ सेव्ह व प्रिंट तयार होत आहे...' : '🖨️ थेट प्रिंट'}
                 </button>
 
                 <button
@@ -1084,12 +1430,193 @@ ${shop.address ? `📍 पत्ता: ${shop.address}\n` : ''}धन्यव�
                   className="primary-btn"
                   onClick={() => handleExecuteAction('pdf')}
                   disabled={isProcessing}
-                  style={{ padding: '10px 18px', fontSize: '13px' }}
+                  style={{
+                    padding: '10px 18px',
+                    fontSize: '13px',
+                    cursor: isProcessing ? 'not-allowed' : 'pointer',
+                    opacity: isProcessing && actionType !== 'pdf' ? 0.65 : 1
+                  }}
                 >
-                  📥 PDF डाऊनलोड
+                  {isProcessing && actionType === 'pdf' ? '⏳ सेव्ह व PDF तयार होत आहे...' : '📥 PDF डाऊनलोड'}
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick New Consultancy Customer Registration Modal */}
+      {showConsultancyModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 19, 0.75)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px'
+          }}
+          onClick={() => setShowConsultancyModal(false)}
+        >
+          <div
+            style={{
+              background: '#fff',
+              borderRadius: '20px',
+              maxWidth: '520px',
+              width: '100%',
+              boxShadow: '0 25px 60px rgba(0,0,0,0.3)',
+              padding: '24px'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #eef2ef', paddingBottom: '12px', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#17221b' }}>
+                🌱 नवीन कन्सल्टन्सी शेतकरी नोंदणी
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowConsultancyModal(false)}
+                style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#66736b' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveNewConsultancyFromModal} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334139', marginBottom: '4px' }}>
+                  शेतकऱ्याचे नाव *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="उदा. राहुल पाटील"
+                  value={newConsultancyForm.name}
+                  onChange={(e) => setNewConsultancyForm({ ...newConsultancyForm, name: e.target.value })}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cad8cd', fontSize: '13px' }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334139', marginBottom: '4px' }}>
+                    मोबाईल क्रमांक *
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    maxLength={10}
+                    placeholder="१० अंकी मोबाईल"
+                    value={newConsultancyForm.mobile}
+                    onChange={(e) => setNewConsultancyForm({ ...newConsultancyForm, mobile: e.target.value.replace(/\D/g, '') })}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cad8cd', fontSize: '13px' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334139', marginBottom: '4px' }}>
+                    कन्सल्टन्सी पीक (Crop) *
+                  </label>
+                  <select
+                    value={newConsultancyForm.crop}
+                    onChange={(e) => setNewConsultancyForm({ ...newConsultancyForm, crop: e.target.value })}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cad8cd', fontSize: '13px', background: '#fff' }}
+                  >
+                    <option value="द्राक्ष (Grapes)">द्राक्ष (Grapes)</option>
+                    <option value="टोमॅटो (Tomato)">टोमॅटो (Tomato)</option>
+                    <option value="डाळिंब (Pomegranate)">डाळिंब (Pomegranate)</option>
+                    <option value="कलिंगड (Watermelon)">कलिंगड (Watermelon)</option>
+                    <option value="कांदा (Onion)">कांदा (Onion)</option>
+                    <option value="ऊस (Sugarcane)">ऊस (Sugarcane)</option>
+                    <option value="इतर पीक (Other)">इतर पीक (Other)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334139', marginBottom: '4px' }}>
+                    क्षेत्र (एकरामध्ये)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="उदा. 2.5"
+                    value={newConsultancyForm.areaAcres}
+                    onChange={(e) => setNewConsultancyForm({ ...newConsultancyForm, areaAcres: e.target.value })}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cad8cd', fontSize: '13px' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334139', marginBottom: '4px' }}>
+                    पत्ता / गाव
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="उदा. कानमंडाळे"
+                    value={newConsultancyForm.address}
+                    onChange={(e) => setNewConsultancyForm({ ...newConsultancyForm, address: e.target.value })}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cad8cd', fontSize: '13px' }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334139', marginBottom: '4px' }}>
+                  टीप / पीक माहिती (Notes)
+                </label>
+                <input
+                  type="text"
+                  placeholder="उदा. छाटणी वेळापत्रक, खत व्यवस्थापन"
+                  value={newConsultancyForm.notes}
+                  onChange={(e) => setNewConsultancyForm({ ...newConsultancyForm, notes: e.target.value })}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cad8cd', fontSize: '13px' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
+                <button
+                  type="submit"
+                  disabled={isSavingConsultancy}
+                  style={{
+                    flex: 1,
+                    background: '#176b3a',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '10px',
+                    padding: '11px',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    cursor: isSavingConsultancy ? 'not-allowed' : 'pointer',
+                    opacity: isSavingConsultancy ? 0.65 : 1
+                  }}
+                >
+                  {isSavingConsultancy ? '⏳ शीटमध्ये नोंदणी होत आहे...' : '✓ नोंदणी करा व बिल जोडा'}
+                </button>
+                <button
+                  type="button"
+                  disabled={isSavingConsultancy}
+                  onClick={() => setShowConsultancyModal(false)}
+                  style={{
+                    background: '#f0f3f1',
+                    border: 'none',
+                    borderRadius: '10px',
+                    padding: '11px 18px',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: isSavingConsultancy ? 'not-allowed' : 'pointer',
+                    opacity: isSavingConsultancy ? 0.65 : 1
+                  }}
+                >
+                  रद्द करा
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

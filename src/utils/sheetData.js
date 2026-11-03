@@ -219,6 +219,11 @@ export function normalizeBillRow(row) {
       total: Number(item.total ?? item.Total ?? 0),
     })),
     notes: readSheetField(row, "Notes", "notes") || "",
+    isConsultancy: Boolean(
+      readSheetField(row, "Is_Consultancy_Customer", "isConsultancy", "is_consultancy", "isConsultancyCustomer") || false
+    ),
+    consultancyCrop:
+      readSheetField(row, "Consultancy_Crop", "consultancyCrop", "consultancy_crop", "Crop", "crop") || "",
     createdAt:
       readSheetField(row, "Created_At", "createdAt", "created_at") || "",
     updatedAt:

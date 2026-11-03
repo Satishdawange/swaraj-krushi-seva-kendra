@@ -21,6 +21,7 @@ const ChangePassword = lazy(() => import('./pages/ChangePassword'));
 
 // Admin, Billing, Inventory & Google Sheets
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const MyCustomers = lazy(() => import('./pages/MyCustomers'));
 const CreateBill = lazy(() => import('./pages/CreateBill'));
 const CreateChallan = lazy(() => import('./pages/CreateChallan'));
 const BillHistory = lazy(() => import('./pages/BillHistory'));
@@ -71,6 +72,14 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['admin']}>
                 <AdminDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/customers"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'staff']}>
+                <MyCustomers />
               </ProtectedRoute>
             }
           />
