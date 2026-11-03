@@ -960,6 +960,10 @@ export default function BillHistory() {
                     className="btn-cancel-edit"
                     onClick={() => setIsEditMode(false)}
                     disabled={isProcessing}
+                    style={{
+                      cursor: isProcessing ? 'not-allowed' : 'pointer',
+                      opacity: isProcessing ? 0.6 : 1
+                    }}
                   >
                     ✕ संपादन रद्द करा (Cancel)
                   </button>
@@ -971,6 +975,10 @@ export default function BillHistory() {
                       className="btn-red-save"
                       onClick={() => handleExecuteUpdate('update_save_only')}
                       disabled={isProcessing}
+                      style={{
+                        cursor: isProcessing ? 'not-allowed' : 'pointer',
+                        opacity: isProcessing && actionType !== 'update_save_only' ? 0.65 : 1
+                      }}
                     >
                       {isProcessing && actionType === 'update_save_only' ? '⏳ साठवत आहे...' : '💾 फक्त बदल सेव्ह करा'}
                     </button>
@@ -981,6 +989,10 @@ export default function BillHistory() {
                       className="btn-red-print"
                       onClick={() => handleExecuteUpdate('update_print')}
                       disabled={isProcessing}
+                      style={{
+                        cursor: isProcessing ? 'not-allowed' : 'pointer',
+                        opacity: isProcessing && actionType !== 'update_print' ? 0.65 : 1
+                      }}
                     >
                       {isProcessing && actionType === 'update_print' ? '⏳ प्रिंट तयार होत आहे...' : '🖨️ अपडेट व प्रिंट करा'}
                     </button>
@@ -991,6 +1003,10 @@ export default function BillHistory() {
                       className="btn-red-pdf"
                       onClick={() => handleExecuteUpdate('update_pdf')}
                       disabled={isProcessing}
+                      style={{
+                        cursor: isProcessing ? 'not-allowed' : 'pointer',
+                        opacity: isProcessing && actionType !== 'update_pdf' ? 0.65 : 1
+                      }}
                     >
                       {isProcessing && actionType === 'update_pdf' ? '⏳ अपडेट होत आहे...' : '📥 अपडेट व PDF डाऊनलोड'}
                     </button>

@@ -28,6 +28,7 @@ export default function CreateChallan() {
   ]);
 
   const [isProcessing, setIsProcessing] = useState(false);
+  const [actionType, setActionType] = useState('');
   const [successInfo, setSuccessInfo] = useState(null);
   const [errors, setErrors] = useState({});
   const [inventory, setInventory] = useState([]);
@@ -80,6 +81,7 @@ export default function CreateChallan() {
   const handleSaveAndAction = async (action = 'print') => {
     if (!validate()) return;
     setIsProcessing(true);
+    setActionType(action);
 
     try {
       const now = new Date();
@@ -153,6 +155,7 @@ export default function CreateChallan() {
       alert('चालन जतन करताना त्रुटी आली.');
     } finally {
       setIsProcessing(false);
+      setActionType('');
     }
   };
 
@@ -540,10 +543,11 @@ export default function CreateChallan() {
               padding: '12px 20px',
               fontSize: '14px',
               fontWeight: '700',
-              cursor: isProcessing ? 'not-allowed' : 'pointer'
+              cursor: isProcessing ? 'not-allowed' : 'pointer',
+              opacity: isProcessing && actionType !== 'save' ? 0.65 : 1
             }}
           >
-            💾 फक्त सेव्ह करा
+            {isProcessing && actionType === 'save' ? '⏳ शीटमध्ये सेव्ह होत आहे...' : '💾 फक्त सेव्ह करा'}
           </button>
 
           <button
@@ -561,10 +565,11 @@ export default function CreateChallan() {
               fontSize: '14px',
               fontWeight: '700',
               cursor: isProcessing ? 'not-allowed' : 'pointer',
+              opacity: isProcessing && actionType !== 'print' ? 0.65 : 1,
               boxShadow: '0 4px 12px rgba(23, 107, 58, 0.25)'
             }}
           >
-            🖨️ चालन सेव्ह व प्रिंट करा (Print)
+            {isProcessing && actionType === 'print' ? '⏳ सेव्ह व प्रिंटिंग तयार होत आहे...' : '🖨️ चालन सेव्ह व प्रिंट करा (Print)'}
           </button>
 
           <button
@@ -579,10 +584,11 @@ export default function CreateChallan() {
               padding: '12px 20px',
               fontSize: '14px',
               fontWeight: '700',
-              cursor: isProcessing ? 'not-allowed' : 'pointer'
+              cursor: isProcessing ? 'not-allowed' : 'pointer',
+              opacity: isProcessing && actionType !== 'pdf' ? 0.65 : 1
             }}
           >
-            📥 PDF डाउनलोड करा
+            {isProcessing && actionType === 'pdf' ? '⏳ सेव्ह व PDF डाऊनलोड...' : '📥 PDF डाउनलोड करा'}
           </button>
 
           <button
@@ -597,10 +603,11 @@ export default function CreateChallan() {
               padding: '12px 20px',
               fontSize: '14px',
               fontWeight: '700',
-              cursor: isProcessing ? 'not-allowed' : 'pointer'
+              cursor: isProcessing ? 'not-allowed' : 'pointer',
+              opacity: isProcessing ? 0.65 : 1
             }}
           >
-            🧾 थेट बिलात रूपांतर करा (Convert to Bill)
+            {isProcessing ? '⏳ प्रक्रिया चालू आहे...' : '🧾 थेट बिलात रूपांतर करा (Convert to Bill)'}
           </button>
         </div>
 
@@ -639,25 +646,31 @@ export default function CreateChallan() {
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <button
                 type="button"
+                disabled={isProcessing}
                 onClick={() => handleSaveAndAction('print')}
                 style={{
                   background: '#176b3a', color: '#ffffff', border: 'none',
                   padding: '8px 14px', borderRadius: '8px', fontSize: '12.5px',
-                  fontWeight: '700', cursor: 'pointer'
+                  fontWeight: '700',
+                  cursor: isProcessing ? 'not-allowed' : 'pointer',
+                  opacity: isProcessing ? 0.65 : 1
                 }}
               >
-                🖨️ प्रिंट करा
+                {isProcessing && actionType === 'print' ? '⏳ प्रिंट तयार होत आहे...' : '🖨️ प्रिंट करा'}
               </button>
               <button
                 type="button"
+                disabled={isProcessing}
                 onClick={() => handleSaveAndAction('pdf')}
                 style={{
                   background: '#2d4b35', color: '#ffffff', border: 'none',
                   padding: '8px 14px', borderRadius: '8px', fontSize: '12.5px',
-                  fontWeight: '700', cursor: 'pointer'
+                  fontWeight: '700',
+                  cursor: isProcessing ? 'not-allowed' : 'pointer',
+                  opacity: isProcessing ? 0.65 : 1
                 }}
               >
-                📥 PDF डाउनलोड करा
+                {isProcessing && actionType === 'pdf' ? '⏳ PDF तयार होत आहे...' : '📥 PDF डाउनलोड करा'}
               </button>
             </div>
           </div>
