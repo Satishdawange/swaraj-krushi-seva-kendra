@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   askAgriAdvisor,
   getOpenAIKey,
@@ -44,21 +45,81 @@ function FormattedAiText({ text }) {
   );
 }
 
+const SESSION_CHAT_KEY = 'swaraj_ai_advisor_chat_session_v1';
+
 export default function AiAgriAdvisor() {
-  const [messages, setMessages] = useState([
-    {
-      id: 1,
-      sender: 'bot',
-      text: `🌱 राम राम शेतकरी मित्रांनो! 🙏\n\nमी स्वराज कृषी सेवा केंद्राचा अधिकृत AI कृषी सल्लागार आहे.\nआपल्या पिकावरील रोग, अळी, किंवा खत व्यवस्थापनाविषयी थेट विचारा.\n\n• पिकाचा प्रश्न टाईप करा, बोला (🎙️), फोटो (📷) किंवा दस्तऐवज (📎) जोडा.\n💡 तुम्ही आधीच स्वराज कृषी सेवा केंद्रातून औषध खरेदी केले आहे का?\nवापर कसा करावा किंवा पाण्याचे प्रमाण आठवत नसेल तर खाली तुमचा १०-अंकी मोबाईल नंबर टाका — मी खरेदीचे बिल व डोस लगेच समजावून सांगेन!`,
-      image: null,
-      attachment: null
+  const [messages, setMessages] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(SESSION_CHAT_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (err) {
+      // ignore parsing error
     }
-  ]);
+    return [
+      {
+        id: 1,
+        sender: 'bot',
+        text: `🌱 राम राम शेतकरी मित्रांनो! 🙏\n\nमी स्वराज कृषी सेवा केंद्राचा अधिकृत AI कृषी सल्लागार आहे.\nआपल्या पिकावरील रोग, अळी, किंवा खत व्यवस्थापनाविषयी थेट विचारा.\n\n• पिकाचा प्रश्न टाईप करा, बोला (🎙️), फोटो (📷) किंवा दस्तऐवज (📎) जोडा.\n💡 तुम्ही आधीच स्वराज कृषी सेवा केंद्रातून औषध खरेदी केले आहे का?\nवापर कसा करावा किंवा पाण्याचे प्रमाण आठवत नसेल तर खाली तुमचा १०-अंकी मोबाईल नंबर टाका — मी खरेदीचे बिल व डोस लगेच समजावून सांगेन!`,
+        image: null,
+        attachment: null
+      }
+    ];
+  });
 
   const [inputText, setInputText] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [selectedAttachment, setSelectedAttachment] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  // Sync messages with sessionStorage to persist active chat session across view changes
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(SESSION_CHAT_KEY, JSON.stringify(messages));
+    } catch (err) {
+      // quota fallback
+    }
+  }, [messages]);
+
+  // Lock background scrolling and allow ESC key to minimize when expanded
+  useEffect(() => {
+    if (!isExpanded) return undefined;
+
+    const originalOverflow = document.body.style.overflow;
+    const originalHtmlOverflow = document.documentElement.style.overflow;
+    const originalTouchAction = document.body.style.touchAction;
+
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setIsExpanded(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      document.documentElement.style.overflow = originalHtmlOverflow;
+      document.body.style.touchAction = originalTouchAction;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isExpanded]);
+
+  // Ensure scroll is positioned at the latest message whenever expanded view toggles
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      scrollToBottom();
+    }, 90);
+    return () => clearTimeout(timer);
+  }, [isExpanded]);
 
   const openAiKey = getOpenAIKey();
   const selectedModel = getSelectedAiModel();
@@ -289,8 +350,10 @@ export default function AiAgriAdvisor() {
       ? 'AI कनेक्शन तपासत आहे...'
       : (isGreen ? 'AI सेवा चालू आहे (तयार)' : 'AI सेवा बंद आहे / समस्या'));
 
-  return (
-    <div className="ai-advisor-card" style={{ position: 'relative' }}>
+  const cardContent = (
+    <div
+      className={`ai-advisor-card ${isExpanded ? 'is-fullscreen-card' : ''}`}
+    >
       {/* Top Header */}
       <div className="ai-advisor-header">
         <div className="ai-advisor-title-group">
@@ -312,11 +375,60 @@ export default function AiAgriAdvisor() {
                 }}
               />
             </div>
-            <p style={{ margin: 0, fontSize: '12px', color: '#5f6368' }}>
+            <p style={{ margin: 0, fontSize: '12px', color: '#b5d8be' }}>
               पिकांवरील रोग, खते व औषधांबद्दल अचूक सल्ला
             </p>
           </div>
         </div>
+
+        {/* Expand / Minimize Symbol Button (Symbol only) */}
+        <button
+          type="button"
+          className="ai-expand-btn"
+          onClick={() => {
+            setIsExpanded((prev) => !prev);
+          }}
+          title={isExpanded ? 'लहान करा (Minimize)' : 'मोठे करा (Expand)'}
+          aria-label={isExpanded ? 'Minimize chat' : 'Maximize chat'}
+        >
+          {isExpanded ? (
+            /* Minimize symbol (Symbol only) */
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <polyline points="4 14 10 14 10 20" />
+              <polyline points="20 10 14 10 14 4" />
+              <line x1="14" y1="10" x2="21" y2="3" />
+              <line x1="3" y1="21" x2="10" y2="14" />
+            </svg>
+          ) : (
+            /* Expand symbol (Symbol only) */
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <polyline points="15 3 21 3 21 9" />
+              <polyline points="9 21 3 21 3 15" />
+              <line x1="21" y1="3" x2="14" y2="10" />
+              <line x1="3" y1="21" x2="10" y2="14" />
+            </svg>
+          )}
+        </button>
       </div>
 
       {/* Messages Stream */}
@@ -473,59 +585,140 @@ export default function AiAgriAdvisor() {
           }}
         />
 
-        {/* Document / Any File Attachment Button */}
-        <button
-          type="button"
-          className="btn-ai-icon"
-          onClick={() => docInputRef.current?.click()}
-          title="दस्तऐवज किंवा फोटो जोडा (PDF, Word, Text, Image)"
-          disabled={isThinking}
-        >
-          📎
-        </button>
+        {/* Action Buttons: Attachment, Photo, Voice */}
+        <div className="ai-input-actions-row">
+          {/* Document / Any File Attachment Button */}
+          <button
+            type="button"
+            className="btn-ai-icon"
+            onClick={() => docInputRef.current?.click()}
+            title="दस्तऐवज किंवा फोटो जोडा (PDF, Word, Text, Image)"
+            disabled={isThinking}
+          >
+            📎
+          </button>
 
-        {/* Camera / Photo Button */}
-        <button
-          type="button"
-          className="btn-ai-icon"
-          onClick={() => photoInputRef.current?.click()}
-          title="पिकाचा फोटो काढा किंवा अपलोड करा"
-          disabled={isThinking}
-        >
-          📷
-        </button>
+          {/* Camera / Photo Button */}
+          <button
+            type="button"
+            className="btn-ai-icon"
+            onClick={() => photoInputRef.current?.click()}
+            title="पिकाचा फोटो काढा किंवा अपलोड करा"
+            disabled={isThinking}
+          >
+            📷
+          </button>
 
-        {/* Voice Input Button */}
-        <button
-          type="button"
-          className={`btn-ai-icon ${isRecording ? 'recording' : ''}`}
-          onClick={handleToggleVoice}
-          title={isRecording ? 'रेकॉर्डिंग थांबवा' : 'बोलून प्रश्न विचारा (मराठी/हिंदी)'}
-          disabled={isThinking}
-        >
-          {isRecording ? '🛑' : '🎙️'}
-        </button>
+          {/* Voice Input Button */}
+          <button
+            type="button"
+            className={`btn-ai-icon ${isRecording ? 'recording' : ''}`}
+            onClick={handleToggleVoice}
+            title={isRecording ? 'रेकॉर्डिंग थांबवा' : 'बोलून प्रश्न विचारा (मराठी/हिंदी)'}
+            disabled={isThinking}
+          >
+            {isRecording ? '🛑' : '🎙️'}
+          </button>
+        </div>
 
-        {/* Text Input */}
-        <input
-          type="text"
-          className="ai-input-text"
-          placeholder={isRecording ? '🎙️ ऐकत आहे, बोला...' : 'पिकाचा प्रश्न विचारा किंवा खरेदी बिलाचा मोबाईल नंबर टाका...'}
-          value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
-          disabled={isThinking}
-        />
+        {/* Input Text Field & Send Button */}
+        <div className="ai-input-field-row">
+          <input
+            type="text"
+            className="ai-input-text"
+            placeholder={isRecording ? '🎙️ ऐकत आहे, बोला...' : 'पिकाचा प्रश्न विचारा किंवा खरेदी बिलाचा मोबाईल नंबर टाका...'}
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            disabled={isThinking}
+          />
 
-        {/* Submit Send Button */}
-        <button
-          type="submit"
-          className="btn-ai-send"
-          disabled={isThinking || (!inputText.trim() && !selectedAttachment)}
-          title="पाठवा"
-        >
-          ➤
-        </button>
+          <button
+            type="submit"
+            className="btn-ai-send"
+            disabled={isThinking || (!inputText.trim() && !selectedAttachment)}
+            title="पाठवा"
+          >
+            ➤
+          </button>
+        </div>
       </form>
     </div>
   );
+
+  if (isExpanded) {
+    return (
+      <>
+        {/* Hero placeholder so page underneath remains steady without layout jumps */}
+        <div
+          className="ai-advisor-card ai-advisor-placeholder"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '24px 16px',
+            textAlign: 'center',
+            background: '#f4f9f5',
+            border: '2px dashed #9bc8a3',
+            borderRadius: '28px',
+            height: '520px',
+            boxShadow: 'none'
+          }}
+        >
+          <div style={{ fontSize: '42px', marginBottom: '12px' }}>🌱</div>
+          <h4 style={{ margin: '0 0 8px', color: '#176b3a', fontSize: '18px', fontWeight: '800' }}>
+            AI कृषी मित्र पूर्ण स्क्रीनमध्ये सुरू आहे
+          </h4>
+          <p style={{ margin: '0 0 16px', color: '#556b5a', fontSize: '13px' }}>
+            चॅट विंडो सध्या पूर्ण स्क्रीनमध्ये उघडली आहे.
+          </p>
+          <button
+            type="button"
+            className="ai-expand-btn"
+            onClick={() => setIsExpanded(false)}
+            title="लहान करा (Minimize)"
+            aria-label="Minimize chat"
+            style={{
+              display: 'inline-flex',
+              background: '#176b3a',
+              color: '#ffffff',
+              border: 'none',
+              width: '42px',
+              height: '42px',
+              borderRadius: '12px',
+              boxShadow: '0 4px 12px rgba(23,107,58,0.25)'
+            }}
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <polyline points="4 14 10 14 10 20" />
+              <polyline points="20 10 14 10 14 4" />
+              <line x1="14" y1="10" x2="21" y2="3" />
+              <line x1="3" y1="21" x2="10" y2="14" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Edge-to-edge Fullscreen Popup Modal Portaled to document.body */}
+        {typeof document !== 'undefined' &&
+          createPortal(
+            <div className="ai-fullscreen-portal-overlay">
+              {cardContent}
+            </div>,
+            document.body
+          )}
+      </>
+    );
+  }
+
+  return cardContent;
 }

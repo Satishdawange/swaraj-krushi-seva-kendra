@@ -47,10 +47,10 @@ const TABS = {
   PRODUCT_REQUESTS: 'Product_Requests',
   AUTH_SESSIONS: 'Auth_Sessions'
 };
-const API_VERSION = 'sksk-customer-portal-v10';
+const API_VERSION = 'sksk-customer-portal-v11 (upgraded from sksk-customer-portal-v10)';
 
 function isBillsSheetName(sheetName) {
-  return sheetName === TABS.BILLS || /^Bills_[0-9]{4}_[0-9]{2}$/i.test(String(sheetName || '')) || /^Bills[_\s-][0-9]{4}[_\s-][0-9]{2}$/i.test(String(sheetName || ''));
+  return sheetName === TABS.BILLS || /^Bills_[0-9]{4}_[0-9]{2}$/i.test(String(sheetName || '')) || /^Bill+s?[_\s-][0-9]{4}[_\s-][0-9]{2}$/i.test(String(sheetName || ''));
 }
 
 
@@ -532,6 +532,12 @@ function getRecentPaginated(ss, sheetName, page, limit, search, category) {
       syncCustomersFromBills(ss);
       sheet = findCustomersSheet(ss);
     }
+  } else if (sheetName === TABS.CONSULTANCY_CUSTOMERS || /^consultancy_?customers?$/i.test(sheetName)) {
+    sheet = ss.getSheetByName(TABS.CONSULTANCY_CUSTOMERS);
+    if (!sheet || sheet.getLastRow() <= 1) {
+      syncConsultancyCustomersFromBills(ss);
+      sheet = ss.getSheetByName(TABS.CONSULTANCY_CUSTOMERS);
+    }
   } else {
     sheet = ss.getSheetByName(sheetName);
   }
@@ -696,7 +702,7 @@ function dashboardSheetRecords(sheet) {
 function getAllBillRecords(ss) {
   const allSheets = ss.getSheets();
   const monthlySheets = allSheets.filter(function(sheet) {
-    return /^Bills[_s-][0-9]{4}[_s-][0-9]{2}$/i.test(sheet.getName());
+    return /^Bill+s?[_\s-][0-9]{4}[_\s-][0-9]{2}$/i.test(sheet.getName());
   });
   const sheets = monthlySheets.length > 0
     ? monthlySheets
@@ -1133,6 +1139,11 @@ function saveBillRecord(ss, bill) {
   
   // Update Customer Khata
   updateCustomerKhata(ss, bill);
+
+  // Sync Consultancy Customer if marked as consultancy customer or has crop
+  if (bill.isConsultancy || bill.isConsultancyCustomer || bill.Is_Consultancy_Customer || bill.consultancyCrop || bill.Consultancy_Crop) {
+    syncConsultancyCustomersFromBills(ss);
+  }
   
   // Update Cached Stats
   updateCachedStats(ss);
@@ -1406,44 +1417,101 @@ function syncCustomersFromBills(ss) {
 // ── Auto-Sync Consultancy Customers ───────────────────────────────────────────
 function syncConsultancyCustomersFromBills(ss) {
   let sheet = ss.getSheetByName(TABS.CONSULTANCY_CUSTOMERS);
+  const headers = ['ID', 'Customer_Name', 'Mobile', 'Crop', 'Address', 'Status', 'Area_Acres', 'Start_Date', 'Notes', 'Created_At', 'Updated_At'];
   if (!sheet) {
     sheet = ss.insertSheet(TABS.CONSULTANCY_CUSTOMERS);
-    const headers = ['ID', 'Customer_Name', 'Mobile', 'Crop', 'Address', 'Status', 'Area_Acres', 'Start_Date', 'Notes', 'Created_At', 'Updated_At'];
     sheet.appendRow(headers);
     sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#176b3a').setFontColor('#ffffff');
     sheet.setFrozenRows(1);
   }
 
-  const allBills = getAllBillRecords(ss);
   const foundMap = {};
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow > 1) {
+    const existingHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) {
+      return String(h || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
+    });
+    const idIdx = existingHeaders.findIndex(function(h) { return h === 'id'; });
+    const nIdx = existingHeaders.findIndex(function(h) { return ['customername', 'name', 'farmername'].indexOf(h) !== -1; });
+    const mIdx = existingHeaders.findIndex(function(h) { return ['mobile', 'phone', 'contact'].indexOf(h) !== -1; });
+    const cIdx = existingHeaders.findIndex(function(h) { return h === 'crop'; });
+    const aIdx = existingHeaders.findIndex(function(h) { return ['address', 'village'].indexOf(h) !== -1; });
+    const sIdx = existingHeaders.findIndex(function(h) { return h === 'status'; });
+    const arIdx = existingHeaders.findIndex(function(h) { return ['areaacres', 'area'].indexOf(h) !== -1; });
+    const sdIdx = existingHeaders.findIndex(function(h) { return ['startdate', 'date'].indexOf(h) !== -1; });
+    const ntIdx = existingHeaders.findIndex(function(h) { return h === 'notes'; });
+    const crIdx = existingHeaders.findIndex(function(h) { return h === 'createdat'; });
+
+    const existingRows = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+    existingRows.forEach(function(row) {
+      const mob = mIdx >= 0 ? String(row[mIdx] || '').replace(/\D/g, '').slice(-10) : '';
+      const name = nIdx >= 0 ? String(row[nIdx] || '').trim() : '';
+      if (!mob && !name) return;
+      const key = mob || ('NAME_' + name.toLowerCase());
+      foundMap[key] = {
+        id: idIdx >= 0 && row[idIdx] ? String(row[idIdx]) : ('CC_' + (mob || Date.now())),
+        name: name || 'शेतकरी',
+        mobile: mob,
+        crop: cIdx >= 0 ? String(row[cIdx] || '') : '',
+        address: aIdx >= 0 ? String(row[aIdx] || '') : '',
+        status: sIdx >= 0 && row[sIdx] ? String(row[sIdx]) : 'Active',
+        areaAcres: arIdx >= 0 && row[arIdx] ? String(row[arIdx]) : '1',
+        startDate: sdIdx >= 0 ? String(row[sdIdx] || '').substring(0, 10) : '',
+        notes: ntIdx >= 0 ? String(row[ntIdx] || '') : '',
+        createdAt: crIdx >= 0 && row[crIdx] ? String(row[crIdx]) : new Date().toISOString()
+      };
+    });
+  }
+
+  const allBills = getAllBillRecords(ss);
   allBills.forEach(function(b) {
     const isCons = String(getRecordValue(b, 'Is_Consultancy_Customer') || '').toLowerCase();
     const crop = String(getRecordValue(b, 'Consultancy_Crop') || '').trim();
-    if (isCons === 'true' || isCons === 'yes' || crop) {
+    if (isCons === 'true' || isCons === 'yes' || isCons === '1' || crop) {
       const mobile = String(getRecordValue(b, 'Mobile') || '').replace(/\D/g, '').slice(-10);
-      if (mobile && !foundMap[mobile]) {
-        foundMap[mobile] = {
-          id: 'CC_' + mobile,
-          name: getRecordValue(b, 'Customer_Name') || 'शेतकरी',
+      const name = String(getRecordValue(b, 'Customer_Name') || '').trim();
+      if (!mobile && !name) return;
+      const key = mobile || ('NAME_' + name.toLowerCase());
+      if (!foundMap[key]) {
+        foundMap[key] = {
+          id: 'CC_' + (mobile || Date.now()),
+          name: name || 'शेतकरी',
           mobile: mobile,
           crop: crop || 'इतर',
-          address: getRecordValue(b, 'Address') || '',
+          address: String(getRecordValue(b, 'Address') || '').trim(),
           status: 'Active',
           areaAcres: '1',
           startDate: String(getRecordValue(b, 'Date') || '').substring(0, 10),
-          notes: ''
+          notes: '',
+          createdAt: new Date().toISOString()
         };
+      } else {
+        if (crop && (!foundMap[key].crop || foundMap[key].crop === 'इतर')) {
+          foundMap[key].crop = crop;
+        }
+        if (name && (!foundMap[key].name || foundMap[key].name === 'शेतकरी')) {
+          foundMap[key].name = name;
+        }
+        const bAddr = String(getRecordValue(b, 'Address') || '').trim();
+        if (bAddr && !foundMap[key].address) {
+          foundMap[key].address = bAddr;
+        }
       }
     }
   });
 
   const keys = Object.keys(foundMap);
   if (keys.length > 0) {
+    if (sheet.getLastRow() > 1) {
+      sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).clearContent();
+    }
     const rows = keys.map(function(k) {
       const c = foundMap[k];
-      return [c.id, c.name, c.mobile, c.crop, c.address, c.status, c.areaAcres, c.startDate, c.notes, new Date().toISOString(), new Date().toISOString()];
+      return [c.id, c.name, c.mobile, c.crop, c.address, c.status, c.areaAcres, c.startDate, c.notes, c.createdAt || new Date().toISOString(), new Date().toISOString()];
     });
-    sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, 11).setValues(rows);
+    sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+    return { success: true, count: rows.length };
   } else if (sheet.getLastRow() <= 1) {
     const demo = [
       ['CC_8459568940', 'रमेश सखाराम पाटील', '8459568940', 'द्राक्ष (Grapes)', 'मु. पो. कानमंडाळे, चांदवड', 'Active', '3.5', '2026-01-10', 'गोडी छाटणी नियोजन पूर्ण', new Date().toISOString(), new Date().toISOString()],
@@ -1452,7 +1520,9 @@ function syncConsultancyCustomersFromBills(ss) {
       ['CC_9977881122', 'ज्ञानेश्वर बापू ठाकरे', '9977881122', 'कलिंगड (Watermelon)', 'मु. पो. शिरसाणे, चांदवड', 'Active', '1.5', '2026-02-15', 'ठिबक विद्राव्य खत शेड्यूल', new Date().toISOString(), new Date().toISOString()]
     ];
     sheet.getRange(2, 1, demo.length, 11).setValues(demo);
+    return { success: true, count: demo.length };
   }
+  return { success: true, count: 0 };
 }
 
 // ── Seed Default Consultancy Services ──────────────────────────────────────────
@@ -1522,44 +1592,67 @@ function seedDefaultServices(ss) {
 }
 
 function updateCustomerKhata(ss, bill) {
-  const mobile = String(bill.customerMobile || '').trim();
-  if (!mobile) return;
-  ensureCustomerUser(ss, mobile, bill.customerName || 'ग्राहक');
+  const mobile = String(bill.customerMobile || bill.mobile || bill.Mobile || '').trim().replace(/\D/g, '').slice(-10);
+  const name = String(bill.customerName || bill.name || bill.Name || bill.Customer_Name || '').trim();
+  const address = String(bill.customerAddress || bill.address || bill.Address || '').trim();
+  if (!mobile && !name) return;
+  if (mobile) ensureCustomerUser(ss, mobile, name || 'ग्राहक');
   
-  const custSheet = ss.getSheetByName(TABS.CUSTOMERS);
+  let custSheet = findCustomersSheet(ss) || ss.getSheetByName(TABS.CUSTOMERS);
+  if (!custSheet) {
+    initAllTabs(ss);
+    custSheet = findCustomersSheet(ss) || ss.getSheetByName(TABS.CUSTOMERS);
+  }
   if (!custSheet) return;
   
   const lastRow = custSheet.getLastRow();
-  const total = Number(bill.totalAmount || 0);
-  const paid = Number(bill.paidAmount || 0);
-  const bal = Number(bill.balanceAmount || 0);
+  const total = Number(bill.totalAmount || bill.Total_Amount || 0);
+  const paid = Number(bill.paidAmount || bill.Paid_Amount || 0);
+  const bal = Number(bill.balanceAmount || bill.Balance_Amount || (total - paid) || 0);
+  const billDate = bill.billDate || bill.Date || new Date().toISOString().split('T')[0];
   
   if (lastRow > 1) {
-    const mobiles = custSheet.getRange(2, 1, lastRow - 1, 1).getValues().map(r => String(r[0]).trim());
-    const idx = mobiles.indexOf(mobile);
-    if (idx !== -1) {
-      const r = idx + 2;
-      custSheet.getRange(r, 2).setValue(bill.customerName || custSheet.getRange(r, 2).getValue());
-      custSheet.getRange(r, 3).setValue(bill.customerAddress || custSheet.getRange(r, 3).getValue());
-      custSheet.getRange(r, 4).setValue(Number(custSheet.getRange(r, 4).getValue() || 0) + 1);
-      custSheet.getRange(r, 5).setValue(Number(custSheet.getRange(r, 5).getValue() || 0) + total);
-      custSheet.getRange(r, 6).setValue(Number(custSheet.getRange(r, 6).getValue() || 0) + paid);
-      custSheet.getRange(r, 7).setValue(Number(custSheet.getRange(r, 7).getValue() || 0) + bal);
-      custSheet.getRange(r, 8).setValue(bill.billDate || new Date().toISOString().split('T')[0]);
-      return;
+    const lastCol = custSheet.getLastColumn();
+    const headers = custSheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) {
+      return String(h || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
+    });
+    const mIdx = headers.findIndex(function(h) { return ['mobile', 'phone', 'contact'].indexOf(h) !== -1; });
+    const nIdx = headers.findIndex(function(h) { return ['customername', 'name', 'farmername'].indexOf(h) !== -1; });
+    const aIdx = headers.findIndex(function(h) { return ['address', 'village'].indexOf(h) !== -1; });
+    const tbIdx = headers.findIndex(function(h) { return ['totalbills', 'bills'].indexOf(h) !== -1; });
+    const tpIdx = headers.findIndex(function(h) { return ['totalpurchased', 'totalamount', 'purchased', 'amount'].indexOf(h) !== -1; });
+    const tpaIdx = headers.findIndex(function(h) { return ['totalpaid', 'paidamount', 'paid'].indexOf(h) !== -1; });
+    const buIdx = headers.findIndex(function(h) { return ['balanceudhaari', 'balance', 'udhaari', 'udhari', 'due'].indexOf(h) !== -1; });
+    const lvIdx = headers.findIndex(function(h) { return ['lastvisit', 'date'].indexOf(h) !== -1; });
+
+    const rows = custSheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+    for (let i = 0; i < rows.length; i++) {
+      const rowMob = mIdx >= 0 ? String(rows[i][mIdx] || '').replace(/\D/g, '').slice(-10) : '';
+      const rowName = nIdx >= 0 ? String(rows[i][nIdx] || '').trim().toLowerCase() : '';
+      if ((mobile && rowMob === mobile) || (!mobile && name && rowName === name.toLowerCase())) {
+        const r = i + 2;
+        if (name && nIdx >= 0) custSheet.getRange(r, nIdx + 1).setValue(name);
+        if (address && aIdx >= 0) custSheet.getRange(r, aIdx + 1).setValue(address);
+        if (tbIdx >= 0) custSheet.getRange(r, tbIdx + 1).setValue(Number(rows[i][tbIdx] || 0) + 1);
+        if (tpIdx >= 0) custSheet.getRange(r, tpIdx + 1).setValue(Number(rows[i][tpIdx] || 0) + total);
+        if (tpaIdx >= 0) custSheet.getRange(r, tpaIdx + 1).setValue(Number(rows[i][tpaIdx] || 0) + paid);
+        if (buIdx >= 0) custSheet.getRange(r, buIdx + 1).setValue(Number(rows[i][buIdx] || 0) + bal);
+        if (lvIdx >= 0) custSheet.getRange(r, lvIdx + 1).setValue(billDate);
+        return;
+      }
     }
   }
   
   // Insert new customer
   custSheet.appendRow([
     mobile,
-    bill.customerName || '',
-    bill.customerAddress || '',
+    name || '',
+    address || '',
     1,
     total,
     paid,
     bal,
-    bill.billDate || new Date().toISOString().split('T')[0]
+    billDate
   ]);
 }
 

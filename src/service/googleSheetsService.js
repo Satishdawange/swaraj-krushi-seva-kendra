@@ -621,7 +621,8 @@ export async function fetchRecentRecords(
         sheetName === "Bills" ||
         sheetName === "Customers" ||
         sheetName === "Inventory" ||
-        sheetName === "Products"
+        sheetName === "Products" ||
+        sheetName === "Consultancy_Customers"
       ) {
         const token = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
         if (token) qParams.set("token", token);
@@ -663,7 +664,10 @@ export async function fetchRecentRecords(
     items = readStorage(STORAGE_KEYS.PURCHASES, []);
   } else if (sheetName === "Customers") {
     const custMap = readStorage(STORAGE_KEYS.CUSTOMERS, {});
-    items = Object.values(custMap);
+    const vals = Object.values(custMap || {});
+    items = vals.length > 0 ? vals : DEFAULT_SHOP_CUSTOMERS;
+  } else if (sheetName === "Consultancy_Customers") {
+    items = readStorage(STORAGE_KEYS.CONSULTANCY_CUSTOMERS, []);
   } else if (sheetName === "Users") {
     items = readStorage(STORAGE_KEYS.USERS, []);
   }
@@ -2055,21 +2059,32 @@ export async function syncCustomersWithSheet() {
 
 // ─── Fetch All Bills (for Customer Analysis & Product Tracing) ─────────────────
 export async function fetchAllBills(forceRefresh = false) {
-  let bills = [];
+  let remoteBills = [];
   try {
     const remote = await fetchGoogleSheetRecords('Bills', forceRefresh);
     if (Array.isArray(remote) && remote.length > 0) {
-      bills = remote.map((b) => normalizeBillRow(b));
+      remoteBills = remote.map((b) => normalizeBillRow(b));
     }
   } catch (err) {
     console.warn('fetchAllBills sheet fetch fallback:', err.message);
   }
 
-  if (bills.length === 0) {
-    const local = readStorage(STORAGE_KEYS.BILLS, []);
-    bills = local.map((b) => normalizeBillRow(b));
-  }
-  return bills;
+  const localBills = (readStorage(STORAGE_KEYS.BILLS, []) || []).map((b) => normalizeBillRow(b));
+
+  const billMap = new Map();
+  // Remote bills first
+  remoteBills.forEach((b) => {
+    const key = String(b.billNo || b.billBookBillNo || b.id || '').trim();
+    if (key) billMap.set(key, b);
+  });
+  // Overlay local bills so newly created/updated bills take precedence
+  localBills.forEach((b) => {
+    const key = String(b.billNo || b.billBookBillNo || b.id || '').trim();
+    if (key) billMap.set(key, b);
+    else billMap.set(`local_${Math.random()}`, b);
+  });
+
+  return Array.from(billMap.values());
 }
 
 // Re-export getSettingValue for convenience
