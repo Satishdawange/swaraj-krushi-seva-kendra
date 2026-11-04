@@ -4,6 +4,7 @@ import {
   saveConsultancyCustomer,
   fetchAllShopCustomers,
   fetchAllBills,
+  fetchRecentRecords,
   syncCustomersWithSheet,
   readStorage,
   STORAGE_KEYS,
@@ -11,18 +12,89 @@ import {
 } from '../service/googleSheetsService';
 import { getShopInfo } from '../service/shopService';
 
+function normalizeShopCustomerRow(row) {
+  if (!row || typeof row !== 'object') return {};
+  const name =
+    row.Customer_Name ||
+    row.customerName ||
+    row.Name ||
+    row.name ||
+    row.Customer ||
+    row.Farmer_Name ||
+    row.farmerName ||
+    'शेतकरी';
+
+  const mobile = String(
+    row.Mobile ||
+    row.mobile ||
+    row.Customer_Mobile ||
+    row.Customer_Phone ||
+    row.phone ||
+    ''
+  ).replace(/\D/g, '').slice(-10);
+
+  const address =
+    row.Address ||
+    row.address ||
+    row.Customer_Address ||
+    row.Village ||
+    row.गाव ||
+    row.Place ||
+    row.City ||
+    '-';
+
+  const totalBills = Number(row.Total_Bills || row.totalBills || row.billsCount || (row.bills ? row.bills.length : 1));
+  const totalPurchased = Number(row.Total_Purchased || row.totalPurchased || row.totalAmount || row.Total_Amount || 0);
+  const totalPaid = Number(row.Total_Paid || row.totalPaid || row.paidAmount || row.Paid_Amount || 0);
+  const balanceUdhaari = Number(
+    row.Balance_Udhaari ??
+    row.balanceUdhaari ??
+    row.Balance ??
+    row.Udhaari ??
+    (totalPurchased - totalPaid) ??
+    0
+  );
+  const lastVisit = row.Last_Visit || row.lastVisit || row.Date || row.date || row.billDate || '-';
+
+  return {
+    ...row,
+    name,
+    mobile,
+    address,
+    totalBills,
+    totalPurchased,
+    totalPaid,
+    balanceUdhaari,
+    lastVisit
+  };
+}
+
 export default function MyCustomers() {
   const [activeTab, setActiveTab] = useState('shop'); // default to 'shop' as requested
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(false);
+
+  // Pagination states (10 customers per page)
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
 
   // Data lists - pre-seed shopCustomerList immediately from local cache or defaults
   const [consultancyList, setConsultancyList] = useState([]);
   const [shopCustomerList, setShopCustomerList] = useState(() => {
     const cached = readStorage(STORAGE_KEYS.CUSTOMERS, {});
     const vals = Object.values(cached || {});
-    return vals.length > 0 ? vals : DEFAULT_SHOP_CUSTOMERS;
+    return (vals.length > 0 ? vals : DEFAULT_SHOP_CUSTOMERS).slice(0, 10).map(normalizeShopCustomerRow);
   });
   const [allBills, setAllBills] = useState([]);
+
+  // Stats
+  const [totalShopCount, setTotalShopCount] = useState(() => {
+    const cached = readStorage(STORAGE_KEYS.CUSTOMERS, {});
+    const vals = Object.values(cached || {});
+    return vals.length > 0 ? vals.length : DEFAULT_SHOP_CUSTOMERS.length;
+  });
+  const [totalConsultancyCount, setTotalConsultancyCount] = useState(4);
 
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState('');
@@ -35,7 +107,7 @@ export default function MyCustomers() {
   const [isNewCustomer, setIsNewCustomer] = useState(false);
   const [isSavingCustomer, setIsSavingCustomer] = useState(false);
   const [productsModalCustomer, setProductsModalCustomer] = useState(null);
-  const [productsCropOnly, setProductsCropOnly] = useState(true);
+  const [productsCropOnly, setProductsCropOnly] = useState(false);
 
   // Toast notification
   const [toastMessage, setToastMessage] = useState('');
@@ -48,22 +120,102 @@ export default function MyCustomers() {
     setTimeout(() => setToastMessage(''), 3500);
   };
 
-  // Load all customer and bill data
-  const loadData = async (force = false) => {
+  // Load paginated customers (10 per page) from Google Sheet / local cache
+  const loadCustomersPage = async (page = 1, tab = activeTab, force = false) => {
+    setPageLoading(true);
     try {
-      const [cList, sList, bills] = await Promise.all([
-        fetchAllConsultancyCustomers(force).catch(() => []),
-        fetchAllShopCustomers(force).catch(() => []),
-        fetchAllBills(force).catch(() => [])
+      const sheetName = tab === 'shop' ? 'Customers' : 'Consultancy_Customers';
+      const [res, bills] = await Promise.all([
+        fetchRecentRecords(sheetName, {
+          page,
+          limit: 10,
+          search: searchQuery
+        }).catch(() => ({ items: [], total: 0, totalPages: 1 })),
+        (allBills.length === 0 || force) ? fetchAllBills(force).catch(() => []) : Promise.resolve(allBills)
       ]);
-      if (Array.isArray(cList) && cList.length > 0) setConsultancyList(cList);
-      if (Array.isArray(sList) && sList.length > 0) setShopCustomerList(sList);
-      if (Array.isArray(bills) && bills.length > 0) setAllBills(bills);
+
+      if (Array.isArray(bills) && bills.length > 0) {
+        setAllBills(bills);
+      }
+
+      const items = res.items || [];
+      const totalRecords = Number(res.total) || items.length;
+      const pagesCount = Math.max(1, Number(res.totalPages) || Math.ceil(totalRecords / 10) || 1);
+
+      if (tab === 'shop') {
+        let list = items.map(normalizeShopCustomerRow);
+        // Fallback to local storage if page 1 returned empty
+        if (list.length === 0 && page === 1 && !searchQuery) {
+          const cached = readStorage(STORAGE_KEYS.CUSTOMERS, {});
+          const vals = Object.values(cached || {});
+          const source = vals.length > 0 ? vals : DEFAULT_SHOP_CUSTOMERS;
+          list = source.slice(0, 10).map(normalizeShopCustomerRow);
+          setTotalCount(source.length);
+          setTotalPages(Math.max(1, Math.ceil(source.length / 10)));
+          setTotalShopCount(source.length);
+        } else {
+          setTotalCount(totalRecords);
+          setTotalPages(pagesCount);
+          setTotalShopCount(totalRecords);
+        }
+        setShopCustomerList(list);
+      } else {
+        let list = items;
+        // Fallback to local storage if page 1 returned empty
+        if (list.length === 0 && page === 1 && !searchQuery) {
+          const cached = readStorage(STORAGE_KEYS.CONSULTANCY_CUSTOMERS, []);
+          if (Array.isArray(cached) && cached.length > 0) {
+            list = cached.slice(0, 10);
+            setTotalCount(cached.length);
+            setTotalPages(Math.max(1, Math.ceil(cached.length / 10)));
+            setTotalConsultancyCount(cached.length);
+          } else {
+            setTotalCount(totalRecords);
+            setTotalPages(pagesCount);
+            setTotalConsultancyCount(totalRecords);
+          }
+        } else {
+          setTotalCount(totalRecords);
+          setTotalPages(pagesCount);
+          setTotalConsultancyCount(totalRecords);
+        }
+        setConsultancyList(list);
+      }
+
+      setCurrentPage(Number(res.page) || page);
     } catch (err) {
-      console.error('Error loading customer data:', err);
+      console.error('Error loading customers page:', err);
     } finally {
+      setPageLoading(false);
       setLoading(false);
     }
+  };
+
+  const handleNextPage = () => {
+    if (currentPage < totalPages && !pageLoading) {
+      const nextP = currentPage + 1;
+      setCurrentPage(nextP);
+      loadCustomersPage(nextP, activeTab);
+    }
+  };
+
+  const handlePrevPage = () => {
+    if (currentPage > 1 && !pageLoading) {
+      const prevP = currentPage - 1;
+      setCurrentPage(prevP);
+      loadCustomersPage(prevP, activeTab);
+    }
+  };
+
+  const handleTabChange = (newTab) => {
+    setActiveTab(newTab);
+    setCurrentPage(1);
+    setSearchQuery('');
+    loadCustomersPage(1, newTab);
+  };
+
+  const loadData = async (force = false) => {
+    await loadCustomersPage(1, activeTab, force);
   };
 
   const handleSyncFromSheet = async () => {
@@ -75,17 +227,24 @@ export default function MyCustomers() {
       } else {
         showToast('ग्राहक सिंक प्रक्रिया पूर्ण झाली!');
       }
-      await loadData(true);
+      await loadCustomersPage(1, activeTab, true);
     } catch (err) {
       showToast('सिंक करताना त्रुटी: ' + err.message);
     }
   };
 
   useEffect(() => {
-    loadData(false);
+    loadCustomersPage(1, activeTab);
   }, []);
 
-  // Filtered Consultancy Customers
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadCustomersPage(1, activeTab);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchQuery, shopUdhaariOnly, cropFilter, statusFilter]);
+
+  // Filtered Consultancy Customers (for in-page filters)
   const filteredConsultancy = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
     return consultancyList.filter((c) => {
@@ -108,7 +267,7 @@ export default function MyCustomers() {
     });
   }, [consultancyList, searchQuery, cropFilter, statusFilter]);
 
-  // Filtered Shop Customers
+  // Filtered Shop Customers (for in-page filters)
   const filteredShopCustomers = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
     return shopCustomerList.filter((c) => {
@@ -125,9 +284,9 @@ export default function MyCustomers() {
   }, [shopCustomerList, searchQuery, shopUdhaariOnly]);
 
   // Calculate KPIs
-  const totalConsultancy = consultancyList.length;
+  const totalConsultancy = totalConsultancyCount;
   const activeConsultancy = consultancyList.filter((c) => (c.status || '').toLowerCase() === 'active').length;
-  const totalShopCustomers = shopCustomerList.length;
+  const totalShopCustomers = totalShopCount;
   const totalUdhaari = shopCustomerList.reduce((sum, c) => sum + (Number(c.balanceUdhaari) || 0), 0);
 
   // Handle Save Consultancy Customer (Add or Edit)
@@ -143,7 +302,7 @@ export default function MyCustomers() {
       await saveConsultancyCustomer(editCustomerModal);
       showToast(isNewCustomer ? 'नवीन कन्सल्टन्सी शेतकरी यशस्वीरित्या जोडला!' : 'कन्सल्टन्सी शेतकरी माहिती अपडेट केली!');
       setEditCustomerModal(null);
-      await loadData(true);
+      await loadCustomersPage(1, 'consultancy', true);
     } catch (err) {
       alert('कन्सल्टन्सी शेतकरी सेव्ह करताना त्रुटी: ' + err.message);
     } finally {
@@ -151,46 +310,114 @@ export default function MyCustomers() {
     }
   };
 
+  // Open used products modal for consultancy customer & refresh bills
+  const handleOpenProductsModal = async (customer) => {
+    setProductsModalCustomer(customer);
+    setProductsCropOnly(false); // default to false so all products for this customer are visible
+    try {
+      const freshBills = await fetchAllBills(true);
+      if (Array.isArray(freshBills) && freshBills.length > 0) {
+        setAllBills(freshBills);
+      }
+    } catch (err) {
+      console.warn('Error refreshing bills for customer products:', err);
+    }
+  };
+
   // Products purchased by selected consultancy customer
   const customerProductsData = useMemo(() => {
     if (!productsModalCustomer) return { items: [], totalSpend: 0, billsCount: 0 };
 
-    const cMobile = String(productsModalCustomer.mobile || '').replace(/\D/g, '').slice(-10);
-    const cCrop = (productsModalCustomer.crop || '').toLowerCase().replace(/[^a-z0-9\u0900-\u097F]/g, '');
+    const cleanPhone = (p) => String(p || '').replace(/\D/g, '').slice(-10);
+    const cMobile = cleanPhone(productsModalCustomer.mobile || productsModalCustomer.phone);
+    const cName = String(productsModalCustomer.name || '').trim().toLowerCase();
+    const cId = String(productsModalCustomer.id || '').trim().toLowerCase();
 
-    // Match bills
+    // Match bills belonging to this customer
     const matchingBills = allBills.filter((b) => {
-      const bMobile = String(b.customerMobile || b.mobile || '').replace(/\D/g, '').slice(-10);
-      const isMobileMatch = bMobile && cMobile && bMobile === cMobile;
-      const isNameMatch = !bMobile && b.customerName && b.customerName.toLowerCase().trim() === productsModalCustomer.name.toLowerCase().trim();
-      return isMobileMatch || isNameMatch;
+      const bMobile = cleanPhone(
+        b.customerMobile ||
+        b.mobile ||
+        b.Customer_Mobile ||
+        b.Customer_Phone ||
+        b.phone ||
+        ''
+      );
+      const bName = String(
+        b.customerName ||
+        b.Customer_Name ||
+        b.name ||
+        ''
+      ).trim().toLowerCase();
+      const bId = String(b.customerId || b.consultancyCustomerId || '').trim().toLowerCase();
+
+      // Mobile match (last 10 digits match)
+      const isMobileMatch = Boolean(cMobile && bMobile && cMobile === bMobile);
+
+      // Name match: exact or substring match if name >= 3 characters
+      const isNameMatch = Boolean(
+        cName && bName && (
+          cName === bName ||
+          (cName.length >= 3 && bName.includes(cName)) ||
+          (bName.length >= 3 && cName.includes(bName))
+        )
+      );
+
+      // ID match
+      const isIdMatch = Boolean(cId && bId && cId === bId);
+
+      return isMobileMatch || isNameMatch || isIdMatch;
     });
 
     const productsList = [];
     let totalSpend = 0;
 
     matchingBills.forEach((bill) => {
-      const billCrop = (bill.consultancyCrop || '').toLowerCase().replace(/[^a-z0-9\u0900-\u097F]/g, '');
-      const isCropMatch = !productsCropOnly || !cCrop || !billCrop || billCrop.includes(cCrop) || cCrop.includes(billCrop);
+      const billCrop = String(bill.consultancyCrop || bill.Consultancy_Crop || bill.crop || '').toLowerCase().trim();
+      const cCrop = String(productsModalCustomer.crop || '').toLowerCase().trim();
+
+      const cleanCrop = (str) => str.replace(/[^a-z0-9\u0900-\u097F]/g, '');
+      const billCropClean = cleanCrop(billCrop);
+      const cCropClean = cleanCrop(cCrop);
+
+      const isCropMatch =
+        !productsCropOnly ||
+        !cCropClean ||
+        !billCropClean ||
+        billCropClean === 'इतर' ||
+        cCropClean === 'इतर' ||
+        billCropClean.includes(cCropClean) ||
+        cCropClean.includes(billCropClean);
 
       if (isCropMatch) {
-        const items = Array.isArray(bill.items) ? bill.items : [];
+        let items = Array.isArray(bill.items) ? bill.items : [];
+        if (items.length === 0 && typeof bill.items === 'string') {
+          try {
+            items = JSON.parse(bill.items);
+          } catch {}
+        }
+        if (items.length === 0 && bill.Items_JSON) {
+          try {
+            items = typeof bill.Items_JSON === 'string' ? JSON.parse(bill.Items_JSON) : bill.Items_JSON;
+          } catch {}
+        }
+
         items.forEach((item) => {
-          const qty = Number(item.quantity || item.qty || 1);
-          const price = Number(item.price || item.rate || 0);
-          const itemTotal = Number(item.total || item.itemTotal || qty * price);
+          const qty = Number(item.qty ?? item.quantity ?? 1);
+          const price = Number(item.price ?? item.rate ?? 0);
+          const itemTotal = Number(item.total ?? item.itemTotal ?? qty * price);
           totalSpend += itemTotal;
 
           productsList.push({
-            billNo: bill.billNo || bill.billId || 'BILL',
-            date: bill.date || bill.createdAt || '',
-            productName: item.name || item.productName || 'उत्पादन',
+            billNo: bill.billNo || bill.billBookBillNo || bill.billId || 'BILL',
+            date: bill.billDate || bill.date || bill.createdAt || '',
+            productName: item.name || item.productName || item.Name || 'उत्पादन',
             category: item.category || 'कृषी औषधे/खते',
             quantity: qty,
             unit: item.unit || 'नग',
             price: price,
             total: itemTotal,
-            crop: bill.consultancyCrop || productsModalCustomer.crop || 'लागू'
+            crop: bill.consultancyCrop || bill.Consultancy_Crop || productsModalCustomer.crop || 'लागू'
           });
         });
       }
@@ -366,43 +593,7 @@ export default function MyCustomers() {
         }}
       >
         <button
-          onClick={() => {
-            setActiveTab('consultancy');
-            setSearchQuery('');
-          }}
-          style={{
-            padding: '12px 20px',
-            border: 'none',
-            background: 'none',
-            borderBottom: activeTab === 'consultancy' ? '3px solid #176b3a' : '3px solid transparent',
-            color: activeTab === 'consultancy' ? '#176b3a' : '#66736b',
-            fontWeight: 800,
-            fontSize: '15px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-        >
-          <span>🌱 कन्सल्टन्सी ग्राहक (My Consultancy Customers)</span>
-          <span
-            style={{
-              background: activeTab === 'consultancy' ? '#eaf6ee' : '#f0f3f1',
-              color: activeTab === 'consultancy' ? '#176b3a' : '#66736b',
-              padding: '2px 8px',
-              borderRadius: '99px',
-              fontSize: '12px'
-            }}
-          >
-            {consultancyList.length}
-          </span>
-        </button>
-
-        <button
-          onClick={() => {
-            setActiveTab('shop');
-            setSearchQuery('');
-          }}
+          onClick={() => handleTabChange('shop')}
           style={{
             padding: '12px 20px',
             border: 'none',
@@ -427,7 +618,37 @@ export default function MyCustomers() {
               fontSize: '12px'
             }}
           >
-            {shopCustomerList.length}
+            {totalShopCount}
+          </span>
+        </button>
+
+        <button
+          onClick={() => handleTabChange('consultancy')}
+          style={{
+            padding: '12px 20px',
+            border: 'none',
+            background: 'none',
+            borderBottom: activeTab === 'consultancy' ? '3px solid #176b3a' : '3px solid transparent',
+            color: activeTab === 'consultancy' ? '#176b3a' : '#66736b',
+            fontWeight: 800,
+            fontSize: '15px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+        >
+          <span>🌱 कन्सल्टन्सी ग्राहक (My Consultancy Customers)</span>
+          <span
+            style={{
+              background: activeTab === 'consultancy' ? '#eaf6ee' : '#f0f3f1',
+              color: activeTab === 'consultancy' ? '#176b3a' : '#66736b',
+              padding: '2px 8px',
+              borderRadius: '99px',
+              fontSize: '12px'
+            }}
+          >
+            {totalConsultancyCount}
           </span>
         </button>
 
@@ -653,10 +874,7 @@ export default function MyCustomers() {
                       <td style={{ padding: '14px 16px', textAlign: 'center' }}>
                         <button
                           type="button"
-                          onClick={() => {
-                            setProductsModalCustomer(customer);
-                            setProductsCropOnly(true);
-                          }}
+                          onClick={() => handleOpenProductsModal(customer)}
                           style={{
                             background: '#176b3a',
                             color: '#fff',
@@ -856,6 +1074,80 @@ export default function MyCustomers() {
           </div>
         </div>
       )}
+
+      {/* Pagination Controls Bar (Max 10 per page on mobile/desktop, fetches next 10 on click) */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '16px 20px',
+          background: '#ffffff',
+          borderRadius: '16px',
+          border: '1px solid #dfe8e0',
+          marginTop: '16px',
+          flexWrap: 'wrap',
+          gap: '12px'
+        }}
+      >
+        <div style={{ fontSize: '13px', color: '#55665c', fontWeight: 600 }}>
+          पान <b>{currentPage}</b> / <b>{totalPages}</b> (एकूण <b>{totalCount}</b> ग्राहक • दर पानावर १० ग्राहक)
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button
+            type="button"
+            onClick={handlePrevPage}
+            disabled={currentPage <= 1 || pageLoading}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '10px',
+              border: '1.5px solid #cadbcf',
+              background: currentPage <= 1 ? '#f3f6f4' : '#ffffff',
+              color: currentPage <= 1 ? '#95a5a6' : '#176b3a',
+              fontWeight: 700,
+              fontSize: '13px',
+              cursor: currentPage <= 1 ? 'not-allowed' : 'pointer',
+              transition: 'all 0.2s'
+            }}
+          >
+            ← मागील (Prev 10)
+          </button>
+
+          <span
+            style={{
+              padding: '8px 14px',
+              borderRadius: '10px',
+              background: '#eaf6ee',
+              color: '#176b3a',
+              fontWeight: 800,
+              fontSize: '13px'
+            }}
+          >
+            {currentPage}
+          </span>
+
+          <button
+            type="button"
+            onClick={handleNextPage}
+            disabled={currentPage >= totalPages || pageLoading}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '10px',
+              border: '1.5px solid #cadbcf',
+              background: currentPage >= totalPages ? '#f3f6f4' : '#176b3a',
+              color: currentPage >= totalPages ? '#95a5a6' : '#ffffff',
+              fontWeight: 700,
+              fontSize: '13px',
+              cursor: currentPage >= totalPages ? 'not-allowed' : 'pointer',
+              boxShadow: currentPage >= totalPages ? 'none' : '0 2px 8px rgba(23,107,58,0.2)',
+              transition: 'all 0.2s'
+            }}
+          >
+            {pageLoading ? 'लोड होत आहे...' : 'पुढील (Next 10) →'}
+          </button>
+        </div>
+      </div>
 
       {/* ========================================================
           PRODUCTS USED MODAL (for Consultancy Customer)

@@ -1596,8 +1596,8 @@ export default function GoogleSheetsIntegration() {
               {[
                 { n: '१', title: 'नवीन Google Sheet बनवा', body: "तुमच्या Google Drive वर जाऊन एक नवीन Spreadsheet बनवा (उदा. 'Swaraj_KSK_Database')." },
                 { n: '२', title: 'Apps Script उघडा', body: 'Google Sheet मधील मेनू बारमध्ये Extensions वर क्लिक करा आणि Apps Script निवडा.' },
-                { n: '३', title: 'स्क्रिप्ट पेस्ट करा', body: 'खाली दिलेला संपूर्ण कोड एका क्लिकवर कॉपी करा आणि Apps Script मधील सर्व जुना कोड काढून तिथे पेस्ट करा.' },
-                { n: '४', title: 'Web App म्हणून Deploy करा', body: 'Deploy ➔ New deployment ➔ Type: Web app ➔ Who has access: Anyone निवडून Deploy करा व URL कॉपी करा.' },
+                { n: '३', title: 'स्क्रिप्ट पेस्ट करा', body: 'खाली दिलेला संपूर्ण कोड एका क्लिकवर कॉपी करा आणि Apps Script मधील सर्व जुना कोड काढून तिथे पेस्ट करा व सेव्ह (Ctrl+S) करा.' },
+                { n: '४', title: 'Web App म्हणून Deploy करा', body: 'Deploy ➔ New deployment (किंवा जुनी डिप्लॉयमेंट अपडेट करताना Manage Deployments ➔ Edit ➔ New Version) ➔ Type: Web app ➔ Who has access: Anyone निवडून Deploy करा व URL कॉपी करा.' },
               ].map(step => (
                 <div key={step.n} style={{ background: '#f8faf9', border: '1px solid #c2d6c7', borderRadius: '12px', padding: '16px' }}>
                   <div style={{
@@ -1708,24 +1708,50 @@ export default function GoogleSheetsIntegration() {
               📑 गुगल शीटमधील आपोआप तयार होणारे टॅब्स (Multiple Tabs in Single Sheet)
             </h3>
             <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#555' }}>
-              एकाच Google Spreadsheet मध्ये खालील ८ स्वतंत्र टॅब्स आपोआप नियंत्रित केले जातात:
+              एकाच Google Spreadsheet मध्ये खालील ११ स्वतंत्र टॅब्स आपोआप नियंत्रित केले जातात:
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
               {[
                 { num: '1', name: 'Stats',          desc: 'कॅश्ड आकडेवारी व एकूण काउंट्स. API ला वेग देण्यासाठी स्वतंत्र मेंटेन होते.' },
                 { num: '2', name: 'Inventory',      desc: 'उपलब्ध साठा, खरेदी दर, विक्री दर (MRP) आणि किमान स्टॉक इशारा पातळी.' },
                 { num: '3', name: 'Purchase_Lots',  desc: 'घाऊक खरेदी लॉट नोंदी, सप्लायर नाव, खरेदी संख्या व एकूण किंमत.' },
-                { num: '4', name: 'Bills',          desc: 'डिजिटल बिले, भरलेली रक्कम, उधारी बाकी, पेमेंट प्रकार व मालाची यादी.' },
+                { num: '4', name: 'Bills / Bills_YYYY_MM', desc: 'मासिक डिजिटल बिले (उदा. Bills_2026_11), भरलेली रक्कम, उधारी बाकी, कन्सल्टन्सी पीक माहिती.' },
                 { num: '5', name: 'Challans',       desc: 'डिलिव्हरी चालने, पोच पावत्या, वाहन क्रमांक व मालाचा तपशील.' },
-                { num: '6', name: 'Customers',      desc: 'शेतकरी ग्राहक डिरेक्टरी, एकूण खरेदी, जमा रक्कम आणि उधारी खाते.' },
-                { num: '7', name: 'Users',          desc: 'व्यवस्थापक (Admin), कर्मचारी व शेतकरी युझर्स आयडी व पासवर्ड्स.' },
-                { num: '8', name: 'Settings',       desc: 'दुकानाची माहिती, प्रोप्रायटर नाव, फोन व पत्ता.' },
+                { num: '6', name: 'Customers',      desc: 'शेतकरी ग्राहक डिरेक्टरी, एकूण खरेदी, जमा रक्कम आणि उधारी खाते (१०-१० पेजिनेशन).' },
+                { num: '7', name: 'Consultancy_Customers', desc: 'कन्सल्टन्सी शेतकरी नोंदणी, पीक, क्षेत्र (एकर), नियोजन व औषधे ट्रॅकिंग.' },
+                { num: '8', name: 'Users',          desc: 'व्यवस्थापक (Admin), कर्मचारी व शेतकरी युझर्स आयडी व पासवर्ड्स.' },
+                { num: '9', name: 'Categories',     desc: 'उत्पादन श्रेणी (उदा. खते, कीटकनाशके, बियाणे).' },
+                { num: '10', name: 'Services',      desc: 'कृषी सल्लागार सेवा, शेतकरी अभिप्राय व माहिती.' },
+                { num: '11', name: 'Settings',      desc: 'दुकानाची माहिती, प्रोप्रायटर नाव, फोन व पत्ता.' },
               ].map(t => (
                 <div key={t.num} style={{ border: '1px solid #e1e8e3', borderRadius: '10px', padding: '12px', background: '#fafcfa' }}>
                   <strong style={{ color: '#176b3a', fontSize: '13.5px' }}>{t.num}. {t.name}</strong>
                   <p style={{ margin: '4px 0 0', fontSize: '11.5px', color: '#65776d' }}>{t.desc}</p>
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Alert for Updating Script */}
+          <div style={{
+            background: '#e8f4fd', border: '1.5px solid #90caf9',
+            borderRadius: '12px', padding: '16px 20px',
+            marginBottom: '20px', fontSize: '13px', color: '#0d47a1',
+            display: 'flex', alignItems: 'flex-start', gap: '12px'
+          }}>
+            <span style={{ fontSize: '22px', lineHeight: 1 }}>💡</span>
+            <div>
+              <strong style={{ fontSize: '14px', color: '#0b3c74' }}>
+                शीटमधील स्क्रिप्ट अपडेट कशी करावी? (How to update existing script in Google Sheets):
+              </strong>
+              <ol style={{ margin: '6px 0 0', paddingLeft: '18px', lineHeight: '1.6', color: '#1565c0' }}>
+                <li>खालील हिरव्या <strong>'📋 संपूर्ण कोड कॉपी करा'</strong> बटनावर क्लिक करा.</li>
+                <li>तुमच्या Google Sheet मध्ये जा ➔ वरच्या मेन्यूमध्ये <strong>Extensions ➔ Apps Script</strong> उघडा.</li>
+                <li><code>Code.gs</code> मधील जुना कोड पूर्ण काढून हा नवीन कोड पेस्ट करा आणि <strong>Ctrl+S (Save)</strong> दाबा.</li>
+                <li>
+                  वरच्या उजव्या बाजूला <strong>Deploy ➔ Manage deployments</strong> निवडा, पेन्सिल (✏️ Edit) आयकॉनवर क्लिक करा, Version मध्ये <strong>'New version'</strong> निवडा आणि <strong>Deploy</strong> वर क्लिक करा.
+                </li>
+              </ol>
             </div>
           </div>
 
