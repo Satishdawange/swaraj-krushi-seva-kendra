@@ -3,7 +3,10 @@ import {
   googleSheetsCategorySeed,
   googleSheetsProductSeed,
 } from "../data/googleSheetsCatalog";
-import { GOOGLE_APPS_SCRIPT_CODE } from "../utils/googleAppsScriptTemplate";
+import {
+  GOOGLE_APPS_SCRIPT_API_VERSION,
+  GOOGLE_APPS_SCRIPT_CODE,
+} from "../utils/googleAppsScriptTemplate";
 import ShopProp from "../config/shopProps";
 import { filterSheetRows, normalizeInventoryRow } from "../utils/sheetData";
 import { buildDashboardAnalytics } from "../utils/dashboardAnalytics";
@@ -36,7 +39,7 @@ const AUTH_TOKEN_STORAGE_KEY = "sksk_auth_session_token";
 
 export const DEFAULT_GOOGLE_SHEETS_API_URL =
   "https://script.google.com/macros/s/AKfycbxFuQ3TatmFB7jrVPcmjI1RF70HN_wpPtP_Wb3XA_Cfe8kitxFuJ95boUZA5Ac3oqklug/exec";
-const REQUIRED_GOOGLE_SHEETS_API_VERSION = "sksk-customer-portal-v10";
+const REQUIRED_GOOGLE_SHEETS_API_VERSION = GOOGLE_APPS_SCRIPT_API_VERSION;
 
 // Default seed shop customers to guarantee instant loading even before network response
 export const DEFAULT_SHOP_CUSTOMERS = [
@@ -162,7 +165,7 @@ initLocalDatabase();
 export function getGoogleSheetsConfig() {
   const stored = readStorage(STORAGE_KEYS.SHEETS_CONFIG, null);
   const envUrl =
-    import.meta.env.VITE_GOOGLE_SHEETS_API_URL || DEFAULT_GOOGLE_SHEETS_API_URL;
+    import.meta.env?.VITE_GOOGLE_SHEETS_API_URL || DEFAULT_GOOGLE_SHEETS_API_URL;
   return {
     webAppUrl: stored?.webAppUrl || envUrl || "",
     sheetId: stored?.sheetId || "",
@@ -198,60 +201,64 @@ export async function fetchGoogleSheetRecords(sheetName, forceRefresh = false) {
   const normSheet = String(sheetName || '').trim();
   if (!normSheet) return [];
 
-  if (!forceRefresh && sheetRecordsCache.has(normSheet)) {
-    const cached = sheetRecordsCache.get(normSheet);
+  const configUrl = getGoogleSheetsConfig().webAppUrl.trim();
+  if (!configUrl) {
+    throw new Error("Google Apps Script Web App URL is not configured.");
+  }
+  const requestKey = `${configUrl}:${normSheet}`;
+
+  if (!forceRefresh && sheetRecordsCache.has(requestKey)) {
+    const cached = sheetRecordsCache.get(requestKey);
     if (Date.now() - cached.timestamp < 15000) {
       return cached.data;
     }
   }
 
-  if (inFlightSheetRequests.has(normSheet)) {
-    return inFlightSheetRequests.get(normSheet);
+  if (inFlightSheetRequests.has(requestKey)) {
+    return inFlightSheetRequests.get(requestKey);
   }
 
   const requestPromise = (async () => {
-    const configUrl = getGoogleSheetsConfig().webAppUrl.trim();
-    const urlsToTry = [];
-    if (configUrl) urlsToTry.push(configUrl);
-    if (!urlsToTry.includes(DEFAULT_GOOGLE_SHEETS_API_URL)) {
-      urlsToTry.push(DEFAULT_GOOGLE_SHEETS_API_URL);
-    }
-
     const token = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+    let lastError = null;
+    const attempts = token
+      ? [{ withToken: true }, { withToken: false }]
+      : [{ withToken: false }];
 
-    for (const targetUrl of urlsToTry) {
-      const attempts = token ? [{ withToken: true }, { withToken: false }] : [{ withToken: false }];
-      for (const attempt of attempts) {
-        try {
-          const query = new URLSearchParams({ action: "getAll", sheetName: normSheet });
-          if (attempt.withToken && token) query.set("token", token);
+    for (const attempt of attempts) {
+      try {
+        const query = new URLSearchParams({ action: "getAll", sheetName: normSheet });
+        if (attempt.withToken && token) query.set("token", token);
 
-          const response = await fetch(
-            `${targetUrl}${targetUrl.includes("?") ? "&" : "?"}${query}`,
-            {
-              method: "GET",
-              mode: "cors",
-              cache: "no-store",
-            },
-          );
-          if (!response.ok) continue;
-
-          const result = await response.json();
-          if (result && result.success && Array.isArray(result.data)) {
-            sheetRecordsCache.set(normSheet, { data: result.data, timestamp: Date.now() });
-            return result.data;
-          }
-        } catch (e) {
-          // Fall through to next attempt or default URL
+        const response = await fetch(
+          `${configUrl}${configUrl.includes("?") ? "&" : "?"}${query}`,
+          {
+            method: "GET",
+            mode: "cors",
+            cache: "no-store",
+          },
+        );
+        if (!response.ok) {
+          lastError = `HTTP ${response.status}`;
+          continue;
         }
+
+        const result = await response.json();
+        if (result && result.success && Array.isArray(result.data)) {
+          sheetRecordsCache.set(requestKey, { data: result.data, timestamp: Date.now() });
+          return result.data;
+        }
+        lastError = result?.error || "The API returned an invalid response.";
+      } catch (error) {
+        lastError = error.message || String(error);
       }
     }
-    return [];
+    throw new Error(`Google Sheets read failed for "${normSheet}": ${lastError || "No response from the API."}`);
   })().finally(() => {
-    inFlightSheetRequests.delete(normSheet);
+    inFlightSheetRequests.delete(requestKey);
   });
 
-  inFlightSheetRequests.set(normSheet, requestPromise);
+  inFlightSheetRequests.set(requestKey, requestPromise);
   return requestPromise;
 }
 
@@ -324,7 +331,7 @@ export async function changeGoogleSheetsPassword(
   currentPassword,
   newPassword,
 ) {
-  await requireGoogleSheetsApiVersion();
+  await requireGoogleSheetsApiVersion(url);
   const result = await sendGoogleSheetsAuthAction("changePassword", {
     token,
     currentPassword,
@@ -431,21 +438,10 @@ export async function fetchMyCustomerBills(explicitMobile = '') {
 }
 
 export async function sendGoogleSheetsAction(action, data) {
-  const url = getGoogleSheetsConfig().webAppUrl.trim();
-  if (!url)
-    throw new Error("Google Apps Script Web App URL is not configured.");
-
-  await fetch(url, {
-    method: "POST",
-    mode: "no-cors",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify({ action, data }),
-  });
-  return { success: true, sent: true };
+  return sendGoogleSheetsActionForResult(action, data);
 }
 
-async function requireGoogleSheetsApiVersion() {
-  const url = getGoogleSheetsConfig().webAppUrl.trim();
+async function requireGoogleSheetsApiVersion(url = getGoogleSheetsConfig().webAppUrl.trim()) {
   if (!url)
     throw new Error("Google Apps Script Web App URL is not configured.");
   const pingUrl = `${url}${url.includes("?") ? "&" : "?"}action=ping`;
@@ -459,13 +455,16 @@ async function requireGoogleSheetsApiVersion() {
   const result = await response.json();
   if (result.apiVersion !== REQUIRED_GOOGLE_SHEETS_API_VERSION) {
     throw new Error(
-      "Google Apps Script जुनी आवृत्ती आहे. नवीन v10 script पुन्हा deploy करा.",
+      `Google Apps Script जुनी आवृत्ती आहे. नवीन ${REQUIRED_GOOGLE_SHEETS_API_VERSION} script पुन्हा deploy करा.`,
     );
   }
 }
 
-async function sendGoogleSheetsActionForResult(action, data) {
-  const url = getGoogleSheetsConfig().webAppUrl.trim();
+async function sendGoogleSheetsActionForResult(
+  action,
+  data,
+  url = getGoogleSheetsConfig().webAppUrl.trim(),
+) {
   if (!url)
     throw new Error("Google Apps Script Web App URL is not configured.");
   await requireGoogleSheetsApiVersion();
@@ -474,7 +473,11 @@ async function sendGoogleSheetsActionForResult(action, data) {
     method: "POST",
     mode: "cors",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify({ action, data }),
+    body: JSON.stringify({
+      action,
+      data,
+      token: localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || "",
+    }),
     cache: "no-store",
   });
   if (!response.ok)
@@ -513,6 +516,11 @@ export async function testGoogleSheetsConnection(webAppUrl) {
 
     const data = await res.json();
     if (data.success) {
+      if (data.apiVersion !== REQUIRED_GOOGLE_SHEETS_API_VERSION) {
+        throw new Error(
+          `Apps Script API version mismatch. Expected ${REQUIRED_GOOGLE_SHEETS_API_VERSION}, received ${data.apiVersion || "unknown"}.`,
+        );
+      }
       saveGoogleSheetsConfig({
         webAppUrl: url,
         lastConnected: new Date().toISOString(),
@@ -631,19 +639,21 @@ export async function fetchRecentRecords(
       const res = await fetch(
         `${config.webAppUrl}${config.webAppUrl.includes("?") ? "&" : "?"}action=getRecent&${qParams.toString()}`,
       );
-      if (res.ok) {
-        const result = await res.json();
-        if (result.success) {
-          return {
-            items: result.data || [],
-            total: result.total || 0,
-            page: result.page || page,
-            limit: result.limit || limit,
-            totalPages: result.totalPages || 1,
-            isLive: true,
-          };
-        }
+      if (!res.ok) {
+        throw new Error(`Google Sheets read failed (${res.status}).`);
       }
+      const result = await res.json();
+      if (!result.success) {
+        throw new Error(result.error || "Google Sheets could not read recent records.");
+      }
+      return {
+        items: result.data || [],
+        total: result.total || 0,
+        page: result.page || page,
+        limit: result.limit || limit,
+        totalPages: result.totalPages || 1,
+        isLive: true,
+      };
     } catch (e) {
       console.warn(
         "Google Sheets live fetch failed, falling back to local cached data:",
@@ -1208,7 +1218,7 @@ export async function getDashboardMetrics(filters = {}) {
     if (!result.success) {
       if (/Invalid action: getDashboardMetrics/i.test(result.error || "")) {
         throw new Error(
-          "Dashboard साठी नवीन Google Apps Script (v10) deploy करा.",
+          `Dashboard साठी नवीन Google Apps Script (${REQUIRED_GOOGLE_SHEETS_API_VERSION}) deploy करा.`,
         );
       }
       throw new Error(result.error || "Could not load dashboard metrics.");
@@ -1450,17 +1460,7 @@ async function syncItemToSheets(action, payload) {
   }
 
   try {
-    await fetch(config.webAppUrl, {
-      method: "POST",
-      mode: "no-cors", // Apps Script cross-origin writes must avoid a CORS preflight.
-      headers: {
-        "Content-Type": "text/plain;charset=utf-8",
-      },
-      body: JSON.stringify({
-        action,
-        data: payload,
-      }),
-    });
+    await sendGoogleSheetsActionForResult(action, payload);
   } catch (err) {
     console.warn(`Background sync error for action ${action}:`, err);
   }
@@ -1479,7 +1479,6 @@ export async function exportAllToGoogleSheet(webAppUrl) {
     bills: readStorage(STORAGE_KEYS.BILLS, []),
     challans: readStorage(STORAGE_KEYS.CHALLANS, []),
     customers: Object.values(readStorage(STORAGE_KEYS.CUSTOMERS, {})),
-    users: readStorage(STORAGE_KEYS.USERS, []),
     settings: [
       {
         key: "shop_name",
@@ -1507,23 +1506,7 @@ export async function exportAllToGoogleSheet(webAppUrl) {
     ],
   };
 
-  await fetch(url, {
-    method: "POST",
-    mode: "no-cors", // Apps Script does not reliably support cross-origin preflight requests.
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify({
-      action: "syncAll",
-      data: payload,
-    }),
-  });
-
-  // no-cors returns an opaque response, so the browser cannot read the script's
-  // result. A resolved fetch confirms the request was sent, not that Sheets saved it.
-  return {
-    success: true,
-    message:
-      "Sync request sent to Google Sheets. Check the sheet to confirm the data was saved.",
-  };
+  return sendGoogleSheetsActionForResult("syncAll", payload, url);
 }
 
 // ─── Fetch ALL settings rows from the Google Sheet Settings tab ───────────────
@@ -1532,10 +1515,10 @@ export async function fetchAllSheetSettings() {
     const rows = await fetchGoogleSheetRecords('Settings');
     // Normalize: each row has key/name and value fields
     return rows.map(row => ({
-      key: String(row.key || row.Key || row.name || row.Name || '').trim(),
-      value: String(row.value || row.Value || '').trim(),
-      description: String(row.description || row.Description || row.desc || '').trim(),
-      category: String(row.category || row.Category || 'General').trim(),
+      key: String(row.key ?? row.Key ?? row.name ?? row.Name ?? '').trim(),
+      value: String(row.value ?? row.Value ?? '').trim(),
+      description: String(row.description ?? row.Description ?? row.desc ?? '').trim(),
+      category: String(row.category ?? row.Category ?? 'General').trim(),
     })).filter(r => r.key);
   } catch (err) {
     console.error('fetchAllSheetSettings error:', err);
@@ -1547,17 +1530,7 @@ export async function fetchAllSheetSettings() {
 export async function saveSheetSetting(key, value) {
   const config = getGoogleSheetsConfig();
   if (!config.webAppUrl) throw new Error('Google Sheets not connected.');
-  // POST with no-cors (Apps Script limitation)
-  await fetch(config.webAppUrl, {
-    method: 'POST',
-    mode: 'no-cors',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({
-      action: 'updateSetting',
-      data: { key, value }
-    })
-  });
-  return { success: true };
+  return sendGoogleSheetsActionForResult('updateSetting', { key, value });
 }
 
 // ─── Fetch Categories from Google Sheets Categories tab ───────────────────────
@@ -1600,14 +1573,7 @@ export async function saveSheetCategory(categoryData) {
     }
   };
 
-  await fetch(config.webAppUrl, {
-    method: 'POST',
-    mode: 'no-cors',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(payload)
-  });
-
-  return { success: true };
+  return sendGoogleSheetsActionForResult(payload.action, payload.data);
 }
 
 // ─── Fetch Services from Google Sheets or Seed ────────────────────────────────
@@ -1668,21 +1634,15 @@ export async function saveServiceItem(serviceData) {
     }
   };
 
-  // Update local storage cache
+  if (config.webAppUrl) {
+    await sendGoogleSheetsActionForResult(payload.action, payload.data);
+  }
+
   const local = readStorage(STORAGE_KEYS.SERVICES, initialConsultancyServices);
   const updatedLocal = local.some(s => s.id === sId)
     ? local.map(s => s.id === sId ? { ...s, ...serviceData, id: sId } : s)
     : [...local, { ...serviceData, id: sId }];
   writeStorage(STORAGE_KEYS.SERVICES, updatedLocal);
-
-  if (config.webAppUrl) {
-    await fetch(config.webAppUrl, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(payload)
-    });
-  }
 
   return { success: true, id: sId };
 }
@@ -1796,21 +1756,15 @@ export async function saveConsultancyCustomer(customerData) {
     }
   };
 
-  // Update local storage
+  if (config.webAppUrl) {
+    await sendGoogleSheetsActionForResult(payload.action, payload.data);
+  }
+
   const local = readStorage(STORAGE_KEYS.CONSULTANCY_CUSTOMERS, []);
   const updatedLocal = local.some(c => c.id === cId || (mobile && c.mobile === mobile))
     ? local.map(c => (c.id === cId || (mobile && c.mobile === mobile)) ? { ...c, ...customerData, id: cId, mobile } : c)
     : [...local, { ...customerData, id: cId, mobile }];
   writeStorage(STORAGE_KEYS.CONSULTANCY_CUSTOMERS, updatedLocal);
-
-  if (config.webAppUrl) {
-    await fetch(config.webAppUrl, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(payload)
-    });
-  }
 
   return { success: true, id: cId, mobile };
 }
@@ -2039,22 +1993,23 @@ export async function fetchAllShopCustomers(forceRefresh = false) {
 // ─── Sync Customers With Google Sheet ─────────────────────────────────────────
 export async function syncCustomersWithSheet() {
   const config = getGoogleSheetsConfig();
-  if (!config.webAppUrl) return { success: false, error: 'Web App URL जोडलेली नाही' };
+  if (!config.webAppUrl) throw new Error('Web App URL जोडलेली नाही');
 
   try {
+    await requireGoogleSheetsApiVersion(config.webAppUrl);
     const res = await fetch(`${config.webAppUrl}${config.webAppUrl.includes('?') ? '&' : '?'}action=syncCustomers`, {
       method: 'GET',
       mode: 'cors',
       cache: 'no-store'
     });
-    if (res.ok) {
-      const data = await res.json();
-      return data;
-    }
+    if (!res.ok) throw new Error(`Google Sheets customer sync failed (${res.status}).`);
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Google Sheets customer sync failed.');
+    return data;
   } catch (err) {
-    console.warn('syncCustomersWithSheet error:', err);
+    console.error('syncCustomersWithSheet error:', err);
+    throw err;
   }
-  return { success: false };
 }
 
 // ─── Fetch All Bills (for Customer Analysis & Product Tracing) ─────────────────

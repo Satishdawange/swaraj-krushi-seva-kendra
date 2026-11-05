@@ -12,6 +12,9 @@
  * - High-speed pagination (10 records at a time) and Stats caching
  */
 
+export const GOOGLE_APPS_SCRIPT_API_VERSION =
+  "sksk-customer-portal-v11 (upgraded from sksk-customer-portal-v10)";
+
 export const GOOGLE_APPS_SCRIPT_CODE = `/**
  * ==========================================================================
  * SWARAJ KRUSHI SEVA KENDRA - GOOGLE APPS SCRIPT WEB APP API
@@ -47,7 +50,7 @@ const TABS = {
   PRODUCT_REQUESTS: 'Product_Requests',
   AUTH_SESSIONS: 'Auth_Sessions'
 };
-const API_VERSION = 'sksk-customer-portal-v11 (upgraded from sksk-customer-portal-v10)';
+const API_VERSION = '${GOOGLE_APPS_SCRIPT_API_VERSION}';
 
 function isBillsSheetName(sheetName) {
   return sheetName === TABS.BILLS || /^Bills_[0-9]{4}_[0-9]{2}$/i.test(String(sheetName || '')) || /^Bill+s?[_\s-][0-9]{4}[_\s-][0-9]{2}$/i.test(String(sheetName || ''));

@@ -1,8 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { filterSheetRows, normalizeBillRow, normalizeInventoryRow, normalizePurchaseLotRow, normalizeShopSettingsRows } from "../src/utils/sheetData.js";
+import {
+  buildBillCustomerOptions,
+  filterSheetRows,
+  normalizeBillRow,
+  normalizeConsultancyCustomerRow,
+  normalizeInventoryRow,
+  normalizePurchaseLotRow,
+  normalizeShopSettingsRows,
+} from "../src/utils/sheetData.js";
 import { buildDashboardAnalytics } from "../src/utils/dashboardAnalytics.js";
-import { GOOGLE_APPS_SCRIPT_CODE } from "../src/utils/googleAppsScriptTemplate.js";
+import {
+  GOOGLE_APPS_SCRIPT_API_VERSION,
+  GOOGLE_APPS_SCRIPT_CODE,
+} from "../src/utils/googleAppsScriptTemplate.js";
 import {
   clearDashboardMetricsCache,
   getDashboardMetricsCache,
@@ -27,7 +38,11 @@ test("Apps Script template includes valid revocable session endpoints", () => {
   assert.match(GOOGLE_APPS_SCRIPT_CODE, /function publicInventoryRecord/);
   assert.match(GOOGLE_APPS_SCRIPT_CODE, /function publicProductRecord/);
   assert.match(GOOGLE_APPS_SCRIPT_CODE, /function inventoryWithoutPricingRecord/);
-  assert.match(GOOGLE_APPS_SCRIPT_CODE, /sksk-customer-portal-v10/);
+  assert.match(GOOGLE_APPS_SCRIPT_CODE, /const API_VERSION = 'sksk-customer-portal-v11 \(upgraded from sksk-customer-portal-v10\)'/);
+  assert.equal(
+    GOOGLE_APPS_SCRIPT_API_VERSION,
+    "sksk-customer-portal-v11 (upgraded from sksk-customer-portal-v10)",
+  );
   assert.match(GOOGLE_APPS_SCRIPT_CODE, /case 'getDashboardMetrics'/);
   assert.match(GOOGLE_APPS_SCRIPT_CODE, /Bills_\[0-9\]\{4\}_\[0-9\]\{2\}/);
   assert.match(GOOGLE_APPS_SCRIPT_CODE, /const recentNeedsStaff = isBillsSheetName\(recentSheet\)/);
@@ -150,6 +165,62 @@ test("normalizes the Apps Script Inventory headers used by the sheet", () => {
   assert.equal(item.sellingPrice, 150);
   assert.equal(item.availableStock, 7);
   assert.equal(item.minAlertQty, 3);
+});
+
+test("normalizes Apps Script consultancy customer headers for the customer page", () => {
+  const customer = normalizeConsultancyCustomerRow({
+    ID: "CC-1",
+    Customer_Name: "Test Farmer",
+    Mobile: "+91 98765 43210",
+    Crop: "Grapes",
+    Address: "Village",
+    Status: "Active",
+    Area_Acres: 2.5,
+    Start_Date: "2026-01-10",
+    Notes: "Follow-up",
+  });
+
+  assert.equal(customer.id, "CC-1");
+  assert.equal(customer.name, "Test Farmer");
+  assert.equal(customer.mobile, "9876543210");
+  assert.equal(customer.crop, "Grapes");
+  assert.equal(customer.address, "Village");
+  assert.equal(customer.status, "Active");
+  assert.equal(customer.areaAcres, "2.5");
+  assert.equal(customer.startDate, "2026-01-10");
+  assert.equal(customer.notes, "Follow-up");
+});
+
+test("bill customer options prefer consultancy records and show only emoji and name", () => {
+  const options = buildBillCustomerOptions(
+    [
+      { name: "Asha Patil", mobile: "9876543210" },
+      { name: "Shop Customer", mobile: "9123456780" },
+    ],
+    [
+      { id: "CC-1", name: "Asha Patil", mobile: "+91 98765 43210", crop: "Grapes" },
+      { id: "CC-2", name: "Consultancy Only", mobile: "9000011111", crop: "Tomato" },
+    ],
+  );
+
+  assert.equal(options.length, 3);
+  assert.deepEqual(options.map(({ name, customerType }) => [name, customerType]), [
+    ["Asha Patil", "consultancy"],
+    ["Consultancy Only", "consultancy"],
+    ["Shop Customer", "shop"],
+  ]);
+  assert.deepEqual(options.map((customer) => customer.displayName), [
+    "🌱 Asha Patil",
+    "🌱 Consultancy Only",
+    "🛒 Shop Customer",
+  ]);
+  assert.equal(new Set(options.map((customer) => customer.selectionValue)).size, options.length);
+});
+
+test("normalizes boolean consultancy status without marking active rows inactive", () => {
+  assert.equal(normalizeConsultancyCustomerRow({ Is_Active: true }).status, "Active");
+  assert.equal(normalizeConsultancyCustomerRow({ Status: "false" }).status, "Inactive");
+  assert.equal(normalizeConsultancyCustomerRow({}).status, "Active");
 });
 
 test("normalizes alternate spreadsheet headers and preserves legitimate zero stock", () => {

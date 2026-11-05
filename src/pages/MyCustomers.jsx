@@ -10,6 +10,7 @@ import {
   STORAGE_KEYS,
   DEFAULT_SHOP_CUSTOMERS
 } from '../service/googleSheetsService';
+import { normalizeConsultancyCustomerRow } from '../utils/sheetData';
 import { getShopInfo } from '../service/shopService';
 
 function normalizeShopCustomerRow(row) {
@@ -71,8 +72,7 @@ function normalizeShopCustomerRow(row) {
 
 export default function MyCustomers() {
   const [activeTab, setActiveTab] = useState('shop'); // default to 'shop' as requested
-  const [loading, setLoading] = useState(false);
-  const [pageLoading, setPageLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
 
   // Pagination states (10 customers per page)
   const [currentPage, setCurrentPage] = useState(1);
@@ -160,12 +160,12 @@ export default function MyCustomers() {
         }
         setShopCustomerList(list);
       } else {
-        let list = items;
+        let list = items.map(normalizeConsultancyCustomerRow);
         // Fallback to local storage if page 1 returned empty
         if (list.length === 0 && page === 1 && !searchQuery) {
           const cached = readStorage(STORAGE_KEYS.CONSULTANCY_CUSTOMERS, []);
           if (Array.isArray(cached) && cached.length > 0) {
-            list = cached.slice(0, 10);
+            list = cached.slice(0, 10).map(normalizeConsultancyCustomerRow);
             setTotalCount(cached.length);
             setTotalPages(Math.max(1, Math.ceil(cached.length / 10)));
             setTotalConsultancyCount(cached.length);
@@ -187,7 +187,6 @@ export default function MyCustomers() {
       console.error('Error loading customers page:', err);
     } finally {
       setPageLoading(false);
-      setLoading(false);
     }
   };
 
@@ -785,9 +784,10 @@ export default function MyCustomers() {
       </div>
 
       {/* Loading state */}
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '60px', color: '#66736b', fontSize: '16px' }}>
-          माहिती लोड होत आहे, कृपया थांबा...
+      {pageLoading ? (
+        <div className="customer-list-loading" role="status" aria-live="polite">
+          <span className="customer-list-loading-spinner" aria-hidden="true" />
+          <span>ग्राहकांची माहिती लोड होत आहे...</span>
         </div>
       ) : activeTab === 'consultancy' ? (
         /* ========================================================
@@ -1515,4 +1515,3 @@ export default function MyCustomers() {
     </div>
   );
 }
-

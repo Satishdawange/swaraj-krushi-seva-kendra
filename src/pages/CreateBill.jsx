@@ -25,6 +25,7 @@ import {
 } from '../service/googleSheetsService';
 import { getShopInfo } from '../service/shopService';
 import ShopProp from '../config/shopProps';
+import { buildBillCustomerOptions } from '../utils/sheetData';
 import '../CSS/billing.css';
 
 export default function CreateBill() {
@@ -46,6 +47,7 @@ export default function CreateBill() {
     return vals.length > 0 ? vals : DEFAULT_SHOP_CUSTOMERS;
   });
   const [consultancyCustomers, setConsultancyCustomers] = useState([]);
+  const [selectedCustomerOption, setSelectedCustomerOption] = useState('');
   const [isConsultancyCustomer, setIsConsultancyCustomer] = useState(false);
   const [selectedConsultancyId, setSelectedConsultancyId] = useState('');
   const [consultancyCrop, setConsultancyCrop] = useState('');
@@ -83,6 +85,7 @@ export default function CreateBill() {
   const [previewOpen, setPreviewOpen] = useState(false);
 
   const invoiceRef = useRef(null);
+  const billCustomerOptions = buildBillCustomerOptions(shopCustomers, consultancyCustomers);
 
   // Load inventory and customers on mount
   useEffect(() => {
@@ -105,29 +108,27 @@ export default function CreateBill() {
 
   // Handle selecting an existing customer from the dropdown
   const handleSelectCustomer = (selectedVal) => {
+    setSelectedCustomerOption(selectedVal);
     if (!selectedVal) return;
-    const allCust = [...consultancyCustomers, ...shopCustomers];
-    const found = allCust.find(
-      (c) =>
-        String(c.mobile || '').replace(/\D/g, '').slice(-10) === selectedVal ||
-        c.name === selectedVal ||
-        c.id === selectedVal
-    );
+    const found = billCustomerOptions.find((customer) => customer.selectionValue === selectedVal);
     if (found) {
       setCustomerName(found.name || '');
-      setCustomerMobile(found.mobile || selectedVal);
-      if (found.address) setCustomerAddress(found.address);
+      setCustomerMobile(found.mobile || '');
+      setCustomerAddress(found.address || '');
 
-      // Check if this customer is registered in consultancy
-      const matchedCons = consultancyCustomers.find(
+      const matchedCons = found.customerType === 'consultancy' && consultancyCustomers.find(
         (c) =>
-          (found.mobile && String(c.mobile || '').replace(/\D/g, '').slice(-10) === found.mobile) ||
+          (found.mobile && String(c.mobile || '').replace(/\D/g, '').slice(-10) === String(found.mobile).replace(/\D/g, '').slice(-10)) ||
           (c.name && found.name && c.name.toLowerCase().trim() === found.name.toLowerCase().trim())
       );
       if (matchedCons) {
         setIsConsultancyCustomer(true);
         setSelectedConsultancyId(matchedCons.id || matchedCons.mobile);
         setConsultancyCrop(matchedCons.crop || 'द्राक्ष (Grapes)');
+      } else {
+        setIsConsultancyCustomer(false);
+        setSelectedConsultancyId('');
+        setConsultancyCrop('');
       }
     }
   };
@@ -496,6 +497,7 @@ ${shop.address ? `📍 पत्ता: ${shop.address}\n` : ''}धन्यव�
     setCustomerName('');
     setCustomerMobile('');
     setCustomerAddress('');
+    setSelectedCustomerOption('');
     setIsConsultancyCustomer(false);
     setSelectedConsultancyId('');
     setConsultancyCrop('');
@@ -620,61 +622,30 @@ ${shop.address ? `📍 पत्ता: ${shop.address}\n` : ''}धन्यव�
           </div>
 
           {/* Quick Existing Customer Auto-Fill Dropdown */}
-          <div style={{ background: '#f8fbf9', border: '1px solid #d5e7d9', borderRadius: '12px', padding: '12px 16px', marginBottom: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#176b3a' }}>
+          <div className="bill-customer-picker">
+            <div className="bill-customer-picker-header">
+              <label htmlFor="existing-bill-customer">
                 🔍 अस्तित्वात असलेला ग्राहक निवडा (Select Existing Customer to Auto-populate):
               </label>
               <button
                 type="button"
                 onClick={reloadCustomers}
-                style={{
-                  background: '#eaf6ee',
-                  border: '1px solid #c2e2cb',
-                  color: '#176b3a',
-                  borderRadius: '6px',
-                  padding: '2px 8px',
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  cursor: 'pointer'
-                }}
                 title="ग्राहक यादी रिफ्रेश करा"
               >
                 🔄 रिफ्रेश
               </button>
             </div>
             <select
-              style={{
-                width: '100%',
-                padding: '9px 12px',
-                borderRadius: '8px',
-                border: '1px solid #cad8cd',
-                fontSize: '13px',
-                background: '#fff',
-                cursor: 'pointer'
-              }}
+              id="existing-bill-customer"
               onChange={(e) => handleSelectCustomer(e.target.value)}
-              defaultValue=""
+              value={selectedCustomerOption}
             >
               <option value="">-- ग्राहक निवडा (किंवा खाली नवीन ग्राहकाची माहिती भरा) --</option>
-              {consultancyCustomers.length > 0 && (
-                <optgroup label="🌱 कन्सल्टन्सी शेतकरी (Consultancy Farmers)">
-                  {consultancyCustomers.map((c) => (
-                    <option key={`cons_${c.id || c.mobile || c.name}`} value={c.mobile || c.name || c.id}>
-                      🌱 {c.name} - {c.crop} {c.mobile ? `(${c.mobile})` : ''}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              {shopCustomers.length > 0 && (
-                <optgroup label="🛒 दुकानाचे खरेदीदार ग्राहक (Shop Customers)">
-                  {shopCustomers.map((c, idx) => (
-                    <option key={`shop_${c.mobile || c.name || idx}`} value={c.mobile || c.name || c.id}>
-                      🛒 {c.name} {c.mobile ? `(${c.mobile})` : ''} - उधारी: ₹{c.balanceUdhaari || 0}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
+              {billCustomerOptions.map((customer) => (
+                <option key={customer.selectionValue} value={customer.selectionValue}>
+                  {customer.displayName}
+                </option>
+              ))}
             </select>
           </div>
 
