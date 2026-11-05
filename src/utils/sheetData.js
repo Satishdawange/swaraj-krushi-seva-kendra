@@ -276,6 +276,103 @@ export function normalizePurchaseLotRow(row) {
   };
 }
 
+export function normalizeConsultancyCustomerRow(row) {
+  const rawStatus = readSheetField(
+    row,
+    "Status",
+    "status",
+    "Is_Active",
+    "is_active",
+    "Active",
+  );
+  const statusText = String(rawStatus ?? "").trim();
+  const status = /^(active|true|1|yes)$/i.test(statusText)
+    ? "Active"
+    : /^(inactive|false|0|no)$/i.test(statusText)
+      ? "Inactive"
+      : statusText || "Active";
+
+  return {
+    ...row,
+    id: String(
+      readSheetField(row, "ID", "id", "Customer_ID", "customerId") || "",
+    ).trim(),
+    name: String(
+      readSheetField(
+        row,
+        "Customer_Name",
+        "Customer Name",
+        "customerName",
+        "customer_name",
+        "Name",
+        "name",
+        "Farmer_Name",
+        "Farmer Name",
+      ) || "",
+    ).trim(),
+    mobile: String(
+      readSheetField(
+        row,
+        "Mobile",
+        "mobile",
+        "Phone",
+        "phone",
+        "Customer_Mobile",
+        "Customer Phone",
+      ) || "",
+    ).replace(/\D/g, "").slice(-10),
+    crop: String(readSheetField(row, "Crop", "crop") || "इतर").trim(),
+    address: String(readSheetField(row, "Address", "address") || "").trim(),
+    status,
+    areaAcres: String(
+      readSheetField(row, "Area_Acres", "Area Acres", "areaAcres") || "1",
+    ).trim(),
+    startDate: readSheetField(row, "Start_Date", "Start Date", "startDate") || "",
+    notes: String(readSheetField(row, "Notes", "notes") || "").trim(),
+    createdAt: readSheetField(row, "Created_At", "Created At", "createdAt") || "",
+    updatedAt: readSheetField(row, "Updated_At", "Updated At", "updatedAt") || "",
+  };
+}
+
+export function buildBillCustomerOptions(shopCustomers = [], consultancyCustomers = []) {
+  const options = [];
+  const mobileNumbers = new Set();
+  const customerNames = new Set();
+  const namesWithoutMobileNumbers = new Set();
+  const candidates = [
+    ...consultancyCustomers.map((customer) => ({
+      ...customer,
+      customerType: "consultancy",
+    })),
+    ...shopCustomers.map((customer) => ({
+      ...customer,
+      customerType: "shop",
+    })),
+  ];
+
+  for (const customer of candidates) {
+    const mobile = String(customer.mobile || "").replace(/\D/g, "").slice(-10);
+    const normalizedName = String(customer.name || "").trim().toLowerCase();
+    const duplicate = mobile
+      ? mobileNumbers.has(mobile) || namesWithoutMobileNumbers.has(normalizedName)
+      : customerNames.has(normalizedName);
+
+    if (duplicate) continue;
+
+    const key = mobile || customer.id || normalizedName || options.length;
+    options.push({
+      ...customer,
+      selectionValue: `${customer.customerType}:${key}`,
+      displayName: `${customer.customerType === "consultancy" ? "🌱" : "🛒"} ${customer.name || "ग्राहक"}`,
+    });
+    if (mobile) mobileNumbers.add(mobile);
+    else if (normalizedName) namesWithoutMobileNumbers.add(normalizedName);
+    if (normalizedName) customerNames.add(normalizedName);
+  }
+
+  return options;
+}
+
 export function filterSheetRows(
   rows = [],
   { search = "", category = "" } = {},

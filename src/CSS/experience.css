@@ -55,6 +55,30 @@ textarea:focus-visible {
   flex: 1 0 auto;
 }
 
+.customer-list-loading {
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #66736b;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.customer-list-loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid #dce8de;
+  border-top-color: #176b3a;
+  border-radius: 50%;
+  animation: customer-list-spin .8s linear infinite;
+}
+
+@keyframes customer-list-spin {
+  to { transform: rotate(360deg); }
+}
+
 .top-strip {
   min-height: 34px;
   height: auto;

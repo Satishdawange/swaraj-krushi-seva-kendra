@@ -1483,6 +1483,9 @@ export default function GoogleSheetsIntegration() {
     setSyncResult(null);
     try {
       const res = await syncCustomersWithSheet();
+      if (!res.success) {
+        throw new Error(res.error || 'ग्राहक सिंक करता आले नाहीत.');
+      }
       setSyncResult({
         success: true,
         message: res.count !== undefined
